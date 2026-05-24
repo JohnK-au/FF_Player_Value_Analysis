@@ -1,0 +1,10 @@
+# Data ingestion & analysis
+pandas
+numpy
+requests
+python-dotenv
+
+# Planned (machine learning & visualization) — uncomment as features land
+# scikit-learn
+# matplotlib
+# jupyter
