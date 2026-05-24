@@ -3,6 +3,7 @@ pandas
 numpy
 requests
 python-dotenv
+espn-api          # ESPN fantasy league data (private leagues via cookie auth)
 
 # Planned (machine learning & visualization) — uncomment as features land
 # scikit-learn
