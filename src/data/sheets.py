@@ -19,15 +19,14 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
+from ..config import RAW_DATA_DIR
+
 load_dotenv()
 
 _CSV_URL = (
     "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 )
 _XLSX_URL = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
-
-# Repo root is two levels up from this file (src/data/sheets.py).
-RAW_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
 
 # The only tabs that matter: friendly key -> exact tab name in the workbook.
 TABS = {

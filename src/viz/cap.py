@@ -19,11 +19,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-from ..data.cap import CAP_TOTAL, cap_breakdown, salary_by_position
+from ..config import CAP_TOTAL, FIGURES_DIR
+from ..data.cap import cap_breakdown, salary_by_position
 from ..data.contracts import TEAMS, UPCOMING_SEASON
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-FIGURES_DIR = REPO_ROOT / "figures"
 
 # Stacking order: (column, label, colour). "Adjustments" is computed (signed).
 COMPONENTS = [

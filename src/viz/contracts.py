@@ -19,10 +19,8 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
+from ..config import FIGURES_DIR
 from ..data.contracts import UPCOMING_SEASON, TEAMS, build_2026_contracts
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-FIGURES_DIR = REPO_ROOT / "figures"
 
 _CMAP = plt.get_cmap("YlOrRd")
 

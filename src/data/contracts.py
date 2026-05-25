@@ -21,18 +21,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from .sheets import RAW_DATA_DIR, load_tab
-
-# Team nicknames as they appear in the sheet header row (left to right).
-TEAMS = ["Nate", "Seeb", "Silv", "Kerr", "Will", "Drew", "Couc", "Haft"]
-
-# The sheet's active "yrs remain" is measured as of CURRENT_SEASON; UPCOMING is
-# the season the analysis is centered on.
-CURRENT_SEASON = 2025
-UPCOMING_SEASON = 2026
+from ..config import CURRENT_SEASON, PROCESSED_DIR, TEAMS, UPCOMING_SEASON
+from .sheets import load_tab
 
 # Some tabs use an alternate spelling for a team (the Contract Extensions tab
-# heads Nate's block "N8").
+# heads Nate's block "N8"). TEAMS / season constants live in src/config.py.
 _TEAM_ALIASES = {"N8": "Nate"}
 
 # Header label (lower-cased, stripped) -> tidy column name.
@@ -69,8 +62,6 @@ _EXT_NUMERIC_COLS = (
     "years_until_end",
     "contract_starts",
 )
-
-PROCESSED_DIR = RAW_DATA_DIR.parent / "processed"
 
 
 def load_raw(use_cache: bool = True) -> pd.DataFrame:

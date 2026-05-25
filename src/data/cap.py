@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from ..config import CAP_TOTAL, DEAD_CAP_RATE
 from .contracts import (
     CURRENT_SEASON,
     TEAMS,
@@ -250,12 +251,7 @@ def parse_tags(df: pd.DataFrame | None = None) -> pd.DataFrame:
 
 # --- Dead cap & reconciliation -------------------------------------------------
 
-# Existing cuts are charged at 20%/yr; the league's 50% rule isn't applied to them
-# yet (per the manager). Use 0.50 for *new* cuts when projecting forward.
-DEAD_CAP_RATE = 0.20
-
-# Salary cap per team per season (confirmed: CAP USED + CAP SPACE = 1500).
-CAP_TOTAL = 1500
+# DEAD_CAP_RATE and CAP_TOTAL are defined in src/config.py.
 
 
 def dead_cap(season: int, cuts: pd.DataFrame | None = None) -> pd.Series:

@@ -12,9 +12,12 @@ find over/under-valued players, project performance over contract length, and
 support roster decisions under the cap. See [README.md](README.md) for the
 fuller pitch.
 
-**Docs:** [docs/data_sources.md](docs/data_sources.md) — the data-scraping /
-pipeline reference (contracts + player stats); [docs/rules.md](docs/rules.md) —
-league cap rules; [docs/analysis_plan.md](docs/analysis_plan.md) — the ML roadmap.
+**Docs:** [docs/architecture.md](docs/architecture.md) — codebase layering & where
+features land; [docs/data_sources.md](docs/data_sources.md) — data-scraping
+reference; [docs/rules.md](docs/rules.md) — league cap rules;
+[docs/analysis_plan.md](docs/analysis_plan.md) — the ML roadmap.
+
+Shared paths & league constants live in [`src/config.py`](src/config.py).
 
 - Public repo: `JohnK-au/FF_Player_Value_Analysis`
 - Language: Python 3 (a local `.venv` is used for dependencies)

@@ -156,15 +156,6 @@ def save_crosswalk_and_return() -> pd.DataFrame:
     return cw
 
 
-def position_group_map() -> dict[str, str]:
-    """player (sheet name) -> position group (QB/RB/WR/TE/K-P/IDP/HC/Other)."""
-    cw = load_crosswalk()
-    return {
-        row.player: POSITION_GROUP.get(row.position, "Other")
-        for row in cw.itertuples()
-    }
-
-
 def attributes_table(rebuild: bool = False) -> pd.DataFrame:
     """Crosswalk + nflverse age/experience: player, espn_id, position, group, age."""
     from .nflverse import player_attributes as nfl_attrs
