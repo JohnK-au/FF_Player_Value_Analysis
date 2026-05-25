@@ -56,11 +56,12 @@ sheet data quirk it surfaces: Justin Fields & Christian Kirk (Haft) have a broke
 - Ingestion reads the workbook as **xlsx and caches the 3 tabs by name**
   (`sheets.cache_tabs()` → `data/raw/contracts_<key>.csv`, keys `master_cap`,
   `trade_log`, `contract_extensions`); `sheets.load_tab(key)` loads them.
-- **Reconciliation flag:** 10 of 15 extensions don't match the active roster's
-  team — 6 look like trades (extension team ≠ active team), 4 aren't on any
-  active roster (likely IR/FA). `build_2026_contracts` treats the **extension tab
-  as source of truth** and returns these as notes. *Open: confirm which source is
-  authoritative when they disagree.*
+- **Source of truth (confirmed):** when the active roster and the Contract
+  Extensions tab disagree on a player's team, the **Extensions tab is current** —
+  the active-roster section lags trades. `build_2026_contracts` already treats
+  extensions as authoritative and returns mismatches as notes.
+  **Caveat:** traded-but-*not*-extended players may still sit under their old team
+  on the active roster, and the Trade Log is too sparse (1 entry) to correct them.
 
 ## Important constraints (read before changing anything)
 

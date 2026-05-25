@@ -34,6 +34,12 @@ tabs, "defunct", "Sheet10") is ignored. ✅
 Best read by fetching the workbook as **xlsx and indexing by tab name** (no `gid`s
 needed).
 
+**When the active roster and the Contract Extensions tab disagree on which team
+owns a player, the Extensions tab is current.** ✅ The active-roster section lags
+trades, and the Trade Log is incomplete (1 entry), so traded-but-not-extended
+players may still appear under their former team on the active roster — a known
+data-quality caveat until trades are reconciled.
+
 ## 3. Salary cap
 
 - **Cap = 1500 (units) per team, the same every season.** ✅
