@@ -6,6 +6,7 @@ fantasy production via ``espn_id``. This is the table the fair-value model
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from .contracts import PROCESSED_DIR
@@ -23,11 +24,26 @@ def load_weekly(use_cache: bool = True) -> pd.DataFrame:
     return df
 
 
+def load_season_performance(use_cache: bool = True) -> pd.DataFrame:
+    """Load cached full-season points (broad coverage), pulling + caching if missing."""
+    path = PROCESSED_DIR / "performance.csv"
+    if use_cache and path.exists():
+        return pd.read_csv(path)
+    from .performance import pull_performance, save_performance
+
+    df = pull_performance()
+    save_performance(df)
+    return df
+
+
 def build_player_dataset() -> pd.DataFrame:
     """One row per 2026 contract player: salary/age/position + recent production.
 
-    Production is the **fantasy regular season** (weeks 1..reg_season_count), so
-    it reflects the weeks that count in this league — not the full NFL season.
+    Production prefers the **fantasy regular season** (weeks 1..reg_season_count),
+    which reflects the weeks that count in this league. Where a player has no
+    weekly data (wasn't rostered in-league those weeks), it falls back to the
+    full-season pull as a proxy so every player who played has a data point.
+    ``prod_source`` records which window each 2025 value came from.
     """
     from .cap import player_salaries_2026
     from .performance import fantasy_season_summary
@@ -35,15 +51,34 @@ def build_player_dataset() -> pd.DataFrame:
     sal = player_salaries_2026().copy()
     sal["espn_id"] = pd.to_numeric(sal["espn_id"], errors="coerce").astype("Int64")
 
-    summ = fantasy_season_summary(load_weekly())
-    summ["espn_id"] = pd.to_numeric(summ["espn_id"], errors="coerce").astype("Int64")
+    fan = fantasy_season_summary(load_weekly())
+    fan["espn_id"] = pd.to_numeric(fan["espn_id"], errors="coerce").astype("Int64")
+    season = load_season_performance()
+    season["espn_id"] = pd.to_numeric(season["espn_id"], errors="coerce").astype("Int64")
 
-    def season_slice(year: int, cols: list[str]) -> pd.DataFrame:
-        s = summ.loc[summ["season"] == year, ["espn_id"] + cols].copy()
+    def fan_slice(year: int, cols: list[str]) -> pd.DataFrame:
+        s = fan.loc[fan["season"] == year, ["espn_id"] + cols].copy()
         return s.rename(columns={c: f"{c}_{year}" for c in cols})
 
-    df = sal.merge(season_slice(2025, ["fpts", "ppg", "games", "stdev"]), on="espn_id", how="left")
-    df = df.merge(season_slice(2024, ["ppg"]), on="espn_id", how="left")
+    def full_slice(year: int, cols: list[str]) -> pd.DataFrame:
+        s = season.loc[season["season"] == year, ["espn_id"] + cols].copy()
+        return s.rename(columns={c: f"full_{c}_{year}" for c in cols})
+
+    df = sal.merge(fan_slice(2025, ["fpts", "ppg", "games", "stdev"]), on="espn_id", how="left")
+    df = df.merge(fan_slice(2024, ["ppg"]), on="espn_id", how="left")
+    df = df.merge(full_slice(2025, ["points", "ppg", "games"]), on="espn_id", how="left")
+    df = df.merge(full_slice(2024, ["ppg"]), on="espn_id", how="left")
+
+    # Prefer fantasy-season values; fall back to the full-season proxy.
+    df["prod_source"] = np.where(
+        df["ppg_2025"].notna(), "fantasy_wk1_13",
+        np.where(df["full_ppg_2025"].notna(), "full_season_proxy", "none"),
+    )
+    df["ppg_2025"] = df["ppg_2025"].fillna(df["full_ppg_2025"])
+    df["games_2025"] = df["games_2025"].fillna(df["full_games_2025"])
+    df["fpts_2025"] = df["fpts_2025"].fillna(df["full_points_2025"])
+    df["ppg_2024"] = df["ppg_2024"].fillna(df["full_ppg_2024"])
+    df = df.drop(columns=["full_points_2025", "full_ppg_2025", "full_games_2025", "full_ppg_2024"])
 
     # Simple cap efficiency: PPG per 100 cap units (proper fair-value is Phase C).
     df["ppg_per_100cap"] = (100 * df["ppg_2025"] / df["salary_2026"]).round(2)

@@ -53,8 +53,10 @@ surface over- and under-valued players and support roster decisions under the ca
 - **B4. Unified player dataset.** ✅ started (`src/data/dataset.py`): one row per
   2026 contract player — salary, position group, age, and recent **fantasy
   regular-season** production (2025 fpts/PPG/games/stdev, 2024 PPG), joined on
-  `espn_id` (`data/processed/player_dataset_2026.csv`). *To add: advanced metrics,
-  and a full all-players-by-season version for model training.*
+  `espn_id` (`data/processed/player_dataset_2026.csv`). Falls back to full-season
+  points where weekly is unavailable (a `prod_source` flag records which), so all
+  156 skill players have a 2025 value (only HCs remain blank). *To add: advanced
+  metrics, and a full all-players-by-season version for model training.*
 
 Advanced features to engineer (by position): QB — EPA/play, CPOE, aDOT; RB — snap share, target share, rush yards over expected, YAC; WR/TE — target share, air yards, aDOT, separation (NGS), route participation.
 
