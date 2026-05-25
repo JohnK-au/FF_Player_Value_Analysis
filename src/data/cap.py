@@ -389,6 +389,48 @@ def salary_by_position() -> pd.DataFrame:
     )
 
 
+_POS_ORDER = ["QB", "RB", "WR", "TE", "K/P", "IDP", "HC", "Other"]
+
+
+def position_salary_tables() -> dict[str, pd.DataFrame]:
+    """Breakdown of 2026 salary by position group.
+
+    Returns:
+      - ``league``: per-position players, avg per roster, total/avg salary, share
+      - ``per_team``: tidy team × position with player count + avg salary
+      - ``count``: team × position player-count matrix
+      - ``avg``: team × position average-salary matrix
+    """
+    allp = player_salaries_2026()
+    order = [p for p in _POS_ORDER if p in set(allp["position_group"])]
+
+    per_team = (
+        allp.groupby(["team", "position_group"])["salary_2026"]
+        .agg(players="size", total_salary="sum", avg_salary="mean")
+        .reset_index()
+    )
+
+    league = (
+        allp.groupby("position_group")["salary_2026"]
+        .agg(players="size", total_salary="sum", avg_salary="mean")
+        .reindex(order)
+    )
+    league["per_roster"] = (league["players"] / len(TEAMS)).round(1)
+    league["share_%"] = (100 * league["total_salary"] / league["total_salary"].sum()).round(1)
+    league["avg_salary"] = league["avg_salary"].round(1)
+    league = league[["players", "per_roster", "total_salary", "avg_salary", "share_%"]]
+
+    count = (
+        per_team.pivot(index="team", columns="position_group", values="players")
+        .reindex(TEAMS)[order].fillna(0).astype(int)
+    )
+    avg = (
+        per_team.pivot(index="team", columns="position_group", values="avg_salary")
+        .reindex(TEAMS)[order].round(1)
+    )
+    return {"league": league, "per_team": per_team, "count": count, "avg": avg}
+
+
 def reconcile(season: int) -> pd.DataFrame:
     """Reconstruct each team's CAP USED for a season vs the sheet's own figure.
 
