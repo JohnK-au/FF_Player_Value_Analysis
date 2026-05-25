@@ -22,10 +22,12 @@ Both data sources are wired up and verified end-to-end:
 | Piece | Status | Where |
 | --- | --- | --- |
 | Project scaffolding (README, gitignore, requirements) | ✅ done | repo root |
-| Contract-sheet ingestion ("Option A": unauthenticated CSV export) | ✅ working | [src/data/sheets.py](src/data/sheets.py) |
+| Contract-sheet ingestion (Option A; workbook read **by tab name** via xlsx) | ✅ working | [src/data/sheets.py](src/data/sheets.py) |
 | ESPN league ingestion (authenticated via `espn-api`) | ✅ working | [src/data/espn.py](src/data/espn.py) |
 | Parse contract sheet → tidy table (**active rosters**) | ✅ working | [src/data/contracts.py](src/data/contracts.py) |
-| Parse remaining sheet sections (rookies, tags, IR/PS, cuts, picks) | ⬜ not started | — |
+| Parse **Contract Extensions** tab → tidy table | ✅ working | [src/data/contracts.py](src/data/contracts.py) |
+| Parse remaining MCS sections (rookies, tags, IR/PS, cuts, picks) | ⬜ not started | — |
+| Build 2026 per-team cap ledger (rosters + extensions + dead cap) | ⬜ next | — |
 | Joining performance + contracts | ⬜ not started | — |
 | ML models | ⬜ not started | — |
 | League rules documentation | 🟨 drafted (needs confirmation) | [docs/rules.md](docs/rules.md) |
@@ -49,8 +51,9 @@ sheet data quirk it surfaces: Justin Fields & Christian Kirk (Haft) have a broke
   5×1yr, 5×2yr, 7×3yr, 6×4yr, 5×5yr), + 4 IR, + 1 offline practice-squad player.
   Cuts cost **50% of remaining salary** (50% of annual salary per remaining
   year); **amnesty** wipes one cut penalty-free once every 3 seasons.
-- To read all three tabs at once, fetch the workbook as **xlsx and index by tab
-  name** (`openpyxl`) rather than per-`gid` CSV — `gid`s aren't needed that way.
+- Ingestion reads the workbook as **xlsx and caches the 3 tabs by name**
+  (`sheets.cache_tabs()` → `data/raw/contracts_<key>.csv`, keys `master_cap`,
+  `trade_log`, `contract_extensions`); `sheets.load_tab(key)` loads them.
 
 ## Important constraints (read before changing anything)
 
@@ -91,7 +94,7 @@ designations (IR, practice squad, amnesty, cut-with-retained-salary). Turning
 this into tidy `(season, team, player, salary, years_remaining, status)` rows is
 the main parsing task ahead.
 
-Section map (1-indexed rows of `data/raw/contracts_gid0.csv`), discovered by
+Section map (1-indexed rows of the Master Cap Sheet tab), discovered by
 reading the full cached export:
 
 | Section | Rows | Notes |
