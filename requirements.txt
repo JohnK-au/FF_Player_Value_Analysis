@@ -8,6 +8,7 @@ espn-api          # ESPN fantasy league data (private leagues via cookie auth)
 nfl_data_py       # nflverse player data: age, experience, advanced stats
 
 matplotlib        # visualizations
+plotly            # interactive (hover) visualizations
 scikit-learn      # fair-value model
 
 # Planned — uncomment as features land

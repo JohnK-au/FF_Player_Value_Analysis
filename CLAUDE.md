@@ -112,6 +112,7 @@ python -m src.data.performance # cache season + weekly (wk1-13) points 2022-2025
 python -m src.data.dataset   # build unified 2026 player dataset + efficiency teaser
 python -m src.models.value   # baseline fair-value model + over/under-valued lists
 python -m src.viz.value      # faceted value scatter (salary vs PPG; figures/value_facets_*.png)
+python -m src.viz.value_interactive # interactive hover scatter -> figures/value_interactive.html
 ```
 
 ## Data-shape gotcha (contract sheet)
