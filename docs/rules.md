@@ -57,7 +57,8 @@ ESPN roster = **32 slots**: 14 starters + 14 bench + 4 IR. ✅
   DB, K, P, **HC (head coach)**. ✅ (the HC slot is why "Pats HC" etc. appear)
 - **28 non-IR spots** = exactly the **28 veteran contract slots**. ✅
 - **Plus 1 practice-squad player** (offline; a given player may be stashed there
-  only once, ever). ✅
+  only once, ever). ✅ A practice-squad player's **salary counts against the cap**
+  (verified: it exactly accounts for the prior reconciliation residual). ✅
 - **Veteran contract-slot pool** (by length): **5×1yr, 5×2yr, 7×3yr, 6×4yr,
   5×5yr** = 28. A team can only sign a veteran into a slot length that is still
   available. ✅
@@ -136,9 +137,11 @@ ESPN roster = **32 slots**: 14 starters + 14 bench + 4 IR. ✅
   20% of the listed value per year, treated like a cut. ✅
 - On the sheet, `yrs left (1-5)` is the penalty-window length; the leading number
   is the **years of penalty remaining** as of 2025. ✅
-- Reconstructing CAP USED from active + rookies + tags + dead cap (@20%) + the
-  trade adjustment matches the sheet to within a few units (2025 near-exact); the
-  small 2026 residuals are mostly **IR players returning** (not yet added). 🟡
+- Reconstructing CAP USED from active + rookies + tags + **practice-squad** +
+  dead cap (@20%) + trade adjustment matches the sheet **exactly for 7/8 teams in
+  2025** (Haft off by 6 — a rookie-option edge). The remaining 2026 residuals are
+  **IR players returning** (e.g. Seeb 20 = Polk 15 + Allen 5; Will ≈ Burrow 63),
+  which overlap the rookie/extension sections so aren't auto-added yet. 🟡
 
 ## 11. Amnesty
 

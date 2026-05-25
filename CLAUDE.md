@@ -29,7 +29,7 @@ Both data sources are wired up and verified end-to-end:
 | Parse MCS sections: cap summary, rookies, tags, IR, cuts | ✅ working (picks pending) | [src/data/cap.py](src/data/cap.py) |
 | 2026 contract view (active rolled forward + extensions) | ✅ working | `contracts.build_2026_contracts` |
 | Per-team contract timeline figure | ✅ working | [src/viz/contracts.py](src/viz/contracts.py) |
-| Cap ledger reconciled to sheet CAP USED | ✅ 2025 near-exact, 2026 close | `cap.reconcile` |
+| Cap ledger reconciled to sheet CAP USED | ✅ 2025 exact (7/8), 2026 close | `cap.reconcile` |
 | Refine residuals (IR returns in 2026; rookie option edges) | ⬜ minor | — |
 | Joining performance + contracts | ⬜ not started | — |
 | ML models | ⬜ not started | — |

@@ -282,10 +282,16 @@ def reconcile(season: int) -> pd.DataFrame:
     rookies = parse_rookies()
     ext = parse_extensions()
     tags = parse_tags()
+    ir = parse_ir()
     caps = parse_cap_summary().query("season == @season").set_index("team")
     dc = dead_cap(season)
     ext_players = set(ext["player"])
     need = season - CURRENT_SEASON + 1  # years_remaining (as of 2025) to reach season
+
+    # Practice-squad salaries DO count against the cap (the IR player's does not —
+    # its replacement, already on the active roster, counts instead).
+    psq = ir[ir["designation"] == "PSquad"].copy()
+    psq["end"] = CURRENT_SEASON + _num(psq["yrs_left_excl"]).fillna(0)
 
     rows = []
     for team in TEAMS:
@@ -306,12 +312,15 @@ def reconcile(season: int) -> pd.DataFrame:
         tag_sal = _num(
             tags.loc[(tags["team"] == team) & (tags["league_year"] == season), "salary"]
         ).sum()
+        ps_sal = _num(
+            psq.loc[(psq["team"] == team) & (psq["end"] >= season), "original_salary"]
+        ).sum()
         trade_adj = (
             caps.loc[team, "dead_cap"]
             if team in caps.index and pd.notna(caps.loc[team, "dead_cap"])
             else 0.0
         )
-        recon = active_sal + rook + ext_sal + tag_sal + dc[team] + trade_adj
+        recon = active_sal + rook + ext_sal + tag_sal + ps_sal + dc[team] + trade_adj
         sheet = caps.loc[team, "cap_used"] if team in caps.index else float("nan")
         rows.append(
             {
@@ -320,6 +329,7 @@ def reconcile(season: int) -> pd.DataFrame:
                 "rookie": round(rook, 1),
                 "ext": round(ext_sal, 1),
                 "tag": round(tag_sal, 1),
+                "ps": round(ps_sal, 1),
                 "dead": round(dc[team], 1),
                 "trade": round(trade_adj, 1),
                 "recon": round(recon, 1),
