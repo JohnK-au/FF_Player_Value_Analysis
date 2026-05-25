@@ -15,7 +15,7 @@ fuller pitch.
 - Public repo: `JohnK-au/FF_Player_Value_Analysis`
 - Language: Python 3 (a local `.venv` is used for dependencies)
 
-## Current state — as of 2026-05-24
+## Current state — as of 2026-05-25
 
 Both data sources are wired up and verified end-to-end:
 
@@ -24,13 +24,33 @@ Both data sources are wired up and verified end-to-end:
 | Project scaffolding (README, gitignore, requirements) | ✅ done | repo root |
 | Contract-sheet ingestion ("Option A": unauthenticated CSV export) | ✅ working | [src/data/sheets.py](src/data/sheets.py) |
 | ESPN league ingestion (authenticated via `espn-api`) | ✅ working | [src/data/espn.py](src/data/espn.py) |
-| Parsing contract sheet into tidy data | ⬜ not started | — |
+| Parse contract sheet → tidy table (**active rosters**) | ✅ working | [src/data/contracts.py](src/data/contracts.py) |
+| Parse remaining sheet sections (rookies, tags, IR/PS, cuts, picks) | ⬜ not started | — |
 | Joining performance + contracts | ⬜ not started | — |
 | ML models | ⬜ not started | — |
-| League rules documentation | ⬜ not started | `docs/rules.md` (planned) |
+| League rules documentation | 🟨 drafted (needs confirmation) | [docs/rules.md](docs/rules.md) |
 
 `src/data/espn.py` was verified pulling the **2025** season (8 teams, records).
 `src/data/sheets.py` caches the contract tab to `data/raw/contracts_gid0.csv`.
+`src/data/contracts.py` parses the **active-roster** section into a tidy
+`(team, player, salary, years_remaining, …)` table (168 contracts, 8 teams) and
+writes `data/processed/contracts_active.csv`. It locates columns by header label
+(not fixed offsets) because the leftmost block carries an extra column. Known
+sheet data quirk it surfaces: Justin Fields & Christian Kirk (Haft) have a broken
+`years_remaining` formula (blank "season @ acquisition" → shows `-2024`).
+
+**Key league facts** (full rules in [docs/rules.md](docs/rules.md)):
+- The workbook has 11 tabs but **only three matter**: `Master Cap Sheet` (tab 0,
+  `gid=0` — the one parsed), `Trade Log`, and `Contract Extensions`. The rest
+  (yearly rookie drafts / free agents / defunct) are ignored.
+- **Active/upcoming season is 2026** — center the analysis there.
+- Salary cap is **1500 units/team/season, fixed** (confirmed). Roster = 14
+  starters + 14 bench = **28 spots = the 28 veteran contract slots** (pool:
+  5×1yr, 5×2yr, 7×3yr, 6×4yr, 5×5yr), + 4 IR, + 1 offline practice-squad player.
+  Cuts cost **50% of remaining salary** (50% of annual salary per remaining
+  year); **amnesty** wipes one cut penalty-free once every 3 seasons.
+- To read all three tabs at once, fetch the workbook as **xlsx and index by tab
+  name** (`openpyxl`) rather than per-`gid` CSV — `gid`s aren't needed that way.
 
 ## Important constraints (read before changing anything)
 
@@ -71,12 +91,32 @@ designations (IR, practice squad, amnesty, cut-with-retained-salary). Turning
 this into tidy `(season, team, player, salary, years_remaining, status)` rows is
 the main parsing task ahead.
 
+Section map (1-indexed rows of `data/raw/contracts_gid0.csv`), discovered by
+reading the full cached export:
+
+| Section | Rows | Notes |
+| --- | --- | --- |
+| Active rosters | 2–29 | ✅ parsed by `contracts.py`; grouped by years-remaining tier 5→1 |
+| TAG (franchise tags) | 30 | player, salary, league year |
+| ROOKIES | 31–45 | option (y/n), draft year, drafted vs. true salary, true years remain |
+| CAP summary | 46–51 | CAP USED / DEAD CAP / CAP SPACE per team, seasons 2025–2029 |
+| IR / Practice Squad | 52–57 | includes the *replacement* player + original salary |
+| Amnesty | 58–59 | season amnestied, player, next season allowed |
+| Cuts (dead cap) | 60–117 | season cut, yrs left, player, salary owed; "CAP HITS … /5" subtotals |
+| Draft picks | 119–159 | per team/year, with elaborate swap-condition notes |
+| Trade log | 164–175 | a side table in the middle columns only |
+
+Team nicknames in the sheet are `Nate, Seeb, Silv, Kerr, Will, Drew, Couc, Haft`
+— these will need mapping to ESPN team ids for the eventual join.
+
 ## Next steps (suggested order)
 
-1. **Parse the contract sheet into a tidy per-player table.** Recommended next —
-   it's the join key everything else hangs off. Add e.g. `src/data/contracts.py`
-   that reshapes `data/raw/contracts_gid0.csv` into a clean DataFrame, and write
-   a few sanity checks (8 teams, salaries numeric, years in range).
+1. ~~Parse the active-roster section into a tidy table.~~ ✅ done
+   (`src/data/contracts.py`). **Remaining sheet parsing** (optional, do as needed):
+   rookies, tags, IR/practice-squad, and cuts/dead-cap → fold into one tidy table
+   with a `status` column, reusing the header-label-matching approach. Draft picks
+   and the trade log are lower priority. Also add a sheet-nickname → ESPN-team-id
+   map for the join.
 2. **Pull richer ESPN data** beyond team records: weekly player scores, season
    stats, and ESPN's own projections (extra `espn-api` calls / API views).
 3. **Build a unified player-value dataset** joining performance + contract cost
@@ -89,12 +129,11 @@ the main parsing task ahead.
 6. **Roster optimization** under the salary cap (which keep/cut/tag/extend moves
    maximize value).
 
-## Open questions to clarify (league rules)
+## League rules
 
-- Salary cap amount and how it changes year to year.
-- Franchise-tag rules (cost, eligibility, limits).
-- Rookie contract scale ("drafted" vs "true" salary distinction).
-- Dead cap, amnesty, and retained-salary mechanics.
-- Contract length limits and extension/restructure rules.
-- Scoring settings (PPR etc.) — likely readable from ESPN's settings view.
-- Which season to center the analysis on (2025 completed vs 2026 upcoming).
+Rules are now substantially confirmed and documented in
+[docs/rules.md](docs/rules.md) (living doc, tagged ✅/🟡/❓): cap, roster + slot
+pool, the pre-season free-agency auction, rookie scale + 4th-year option,
+franchise-tag formula, extensions, cuts/dead-cap, amnesty, and IR. Only a few
+minor items remain open (how extension salary/length is set, draft order, trade
+deadline). Scoring/lineup is read straight from ESPN, not transcribed.
