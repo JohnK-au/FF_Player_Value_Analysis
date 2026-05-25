@@ -11,33 +11,38 @@ import pandas as pd
 from .contracts import PROCESSED_DIR
 
 
-def load_performance(use_cache: bool = True) -> pd.DataFrame:
-    """Load cached per-player season points, pulling + caching if missing."""
-    path = PROCESSED_DIR / "performance.csv"
+def load_weekly(use_cache: bool = True) -> pd.DataFrame:
+    """Load cached per-player per-week points, pulling + caching if missing."""
+    path = PROCESSED_DIR / "performance_weekly.csv"
     if use_cache and path.exists():
         return pd.read_csv(path)
-    from .performance import pull_performance, save_performance
+    from .performance import pull_weekly_performance, save_weekly_performance
 
-    df = pull_performance()
-    save_performance(df)
+    df = pull_weekly_performance()
+    save_weekly_performance(df)
     return df
 
 
 def build_player_dataset() -> pd.DataFrame:
-    """One row per 2026 contract player: salary/age/position + recent production."""
+    """One row per 2026 contract player: salary/age/position + recent production.
+
+    Production is the **fantasy regular season** (weeks 1..reg_season_count), so
+    it reflects the weeks that count in this league — not the full NFL season.
+    """
     from .cap import player_salaries_2026
+    from .performance import fantasy_season_summary
 
     sal = player_salaries_2026().copy()
     sal["espn_id"] = pd.to_numeric(sal["espn_id"], errors="coerce").astype("Int64")
 
-    perf = load_performance()
-    perf["espn_id"] = pd.to_numeric(perf["espn_id"], errors="coerce").astype("Int64")
+    summ = fantasy_season_summary(load_weekly())
+    summ["espn_id"] = pd.to_numeric(summ["espn_id"], errors="coerce").astype("Int64")
 
     def season_slice(year: int, cols: list[str]) -> pd.DataFrame:
-        s = perf.loc[perf["season"] == year, ["espn_id"] + cols].copy()
+        s = summ.loc[summ["season"] == year, ["espn_id"] + cols].copy()
         return s.rename(columns={c: f"{c}_{year}" for c in cols})
 
-    df = sal.merge(season_slice(2025, ["points", "ppg", "games"]), on="espn_id", how="left")
+    df = sal.merge(season_slice(2025, ["fpts", "ppg", "games", "stdev"]), on="espn_id", how="left")
     df = df.merge(season_slice(2024, ["ppg"]), on="espn_id", how="left")
 
     # Simple cap efficiency: PPG per 100 cap units (proper fair-value is Phase C).

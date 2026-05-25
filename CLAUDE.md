@@ -32,7 +32,7 @@ Both data sources are wired up and verified end-to-end:
 | Cap-distribution figures (2026 + 2025–29 projection) | ✅ working | [src/viz/cap.py](src/viz/cap.py) |
 | Contract ↔ ESPN player join (position, espn_id) | ✅ 100% matched | [src/data/players.py](src/data/players.py) |
 | Player age/experience (nflverse) join | ✅ 97% (HCs excl.) | [src/data/nflverse.py](src/data/nflverse.py) |
-| ESPN season performance 2022–2025 | ✅ working | [src/data/performance.py](src/data/performance.py) |
+| ESPN performance 2022–2025 (season + weekly wk1–13) | ✅ working | [src/data/performance.py](src/data/performance.py) |
 | Unified 2026 player dataset (salary+age+production) | ✅ working | [src/data/dataset.py](src/data/dataset.py) |
 | Cap ledger reconciled to sheet CAP USED | ✅ 2025 exact (7/8), 2026 close | `cap.reconcile` |
 | Refine residuals (IR returns in 2026; rookie option edges) | ⬜ minor | — |
@@ -100,7 +100,7 @@ python -m src.data.cap       # parse cap sections + reconcile CAP USED vs the sh
 python -m src.viz.contracts  # render figures/team_contracts_2026.png (git-ignored)
 python -m src.viz.cap        # cap_distribution_2026 + cap_projection_2025_2029 + salary_by_position_2026
 python -m src.data.players   # build contract<->ESPN crosswalk (positions, espn_id)
-python -m src.data.performance # cache per-player season points 2022-2025
+python -m src.data.performance # cache season + weekly (wk1-13) points 2022-2025
 python -m src.data.dataset   # build unified 2026 player dataset + efficiency teaser
 ```
 
