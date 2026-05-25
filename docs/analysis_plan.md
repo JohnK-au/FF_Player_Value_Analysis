@@ -26,7 +26,9 @@ surface over- and under-valued players and support roster decisions under the ca
 ### Phase A — Cap-distribution figures (near-term; mostly doable now)
 - **A1. Total salary vs cap** per team — CAP USED stacked to the 1500 cap, with CAP SPACE. *(have the data)*
 - **A2. Where salary is going** — component breakdown per team: active contracts, rookies, extensions, tags, practice squad, dead cap, admin penalties, trade adjustments. *(have the data via `cap.reconcile`)*
-- **A3. Salary by position group** — needs positions → depends on the player join (B1).
+- **A3. Salary by position group** — ✅ done (`viz/cap.plot_salary_by_position`):
+  per-team 2026 salary stacked by position + league-wide totals. (Insight: league
+  spend is WR ≫ RB ≫ TE ≈ QB; almost nothing on IDP/K/P/HC.)
 
 ### Phase B — Player join & data foundation
 - **B1. Contract ↔ ESPN join.** ✅ done (`src/data/players.py`): normalized + fuzzy

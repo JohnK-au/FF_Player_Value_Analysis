@@ -350,6 +350,45 @@ def cap_breakdown(season: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def player_salaries_2026() -> pd.DataFrame:
+    """Per-player 2026 cap salary (active + extensions + rookies + practice squad),
+    joined to position group via the player crosswalk."""
+    from .contracts import build_2026_contracts
+    from .players import position_group_map
+
+    combined, _ = build_2026_contracts()  # active + extensions, salary_2026
+    parts = [combined[["team", "player", "salary_2026", "source"]]]
+
+    rk = parse_rookies()
+    rk["salary_2026"] = [rookie_season_salary(r, UPCOMING_SEASON) for _, r in rk.iterrows()]
+    parts.append(
+        rk.loc[rk["salary_2026"] > 0, ["team", "player", "salary_2026"]].assign(source="rookie")
+    )
+
+    ir = parse_ir()
+    ps = ir[ir["designation"] == "PSquad"].copy()
+    ps["salary_2026"] = _num(ps["original_salary"])
+    parts.append(
+        ps.loc[ps["salary_2026"] > 0, ["team", "player", "salary_2026"]].assign(source="practice_squad")
+    )
+
+    allp = pd.concat(parts, ignore_index=True).drop_duplicates(["team", "player"])
+    pg = position_group_map()
+    allp["position_group"] = allp["player"].map(pg).fillna("Other")
+    return allp
+
+
+def salary_by_position() -> pd.DataFrame:
+    """Team × position-group matrix of 2026 player salary."""
+    allp = player_salaries_2026()
+    return (
+        allp.groupby(["team", "position_group"])["salary_2026"]
+        .sum()
+        .unstack(fill_value=0.0)
+        .reindex(TEAMS)
+    )
+
+
 def reconcile(season: int) -> pd.DataFrame:
     """Reconstruct each team's CAP USED for a season vs the sheet's own figure.
 

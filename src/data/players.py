@@ -133,6 +133,38 @@ def build_crosswalk(year: int = 2025) -> pd.DataFrame:
     return pd.DataFrame(recs)
 
 
+# Collapse ESPN positions into the groups we report on.
+POSITION_GROUP = {
+    "QB": "QB", "RB": "RB", "WR": "WR", "TE": "TE",
+    "K": "K/P", "P": "K/P", "HC": "HC",
+    "CB": "IDP", "S": "IDP", "DB": "IDP", "DE": "IDP",
+    "DT": "IDP", "DL": "IDP", "LB": "IDP", "EDGE": "IDP",
+}
+
+
+def load_crosswalk(rebuild: bool = False) -> pd.DataFrame:
+    """Load the cached player crosswalk, building it if missing or ``rebuild``."""
+    path = PROCESSED_DIR / "player_crosswalk.csv"
+    if path.exists() and not rebuild:
+        return pd.read_csv(path)
+    return save_crosswalk_and_return()
+
+
+def save_crosswalk_and_return() -> pd.DataFrame:
+    cw = build_crosswalk()
+    save_crosswalk(cw)
+    return cw
+
+
+def position_group_map() -> dict[str, str]:
+    """player (sheet name) -> position group (QB/RB/WR/TE/K-P/IDP/HC/Other)."""
+    cw = load_crosswalk()
+    return {
+        row.player: POSITION_GROUP.get(row.position, "Other")
+        for row in cw.itertuples()
+    }
+
+
 def save_crosswalk(df: pd.DataFrame | None = None) -> "pd.Path":
     df = build_crosswalk() if df is None else df
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)

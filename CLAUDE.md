@@ -95,7 +95,7 @@ python -m src.data.sheets    # caches the 3 relevant tabs to data/raw/
 python -m src.data.contracts # parse active rosters + extensions -> data/processed/
 python -m src.data.cap       # parse cap sections + reconcile CAP USED vs the sheet
 python -m src.viz.contracts  # render figures/team_contracts_2026.png (git-ignored)
-python -m src.viz.cap        # render cap_distribution_2026.png + cap_projection_2025_2029.png
+python -m src.viz.cap        # cap_distribution_2026 + cap_projection_2025_2029 + salary_by_position_2026
 python -m src.data.players   # build contract<->ESPN crosswalk (positions, espn_id)
 ```
 

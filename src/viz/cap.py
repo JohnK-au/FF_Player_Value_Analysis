@@ -19,7 +19,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-from ..data.cap import CAP_TOTAL, cap_breakdown
+from ..data.cap import CAP_TOTAL, cap_breakdown, salary_by_position
 from ..data.contracts import TEAMS, UPCOMING_SEASON
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -137,7 +137,64 @@ def plot_cap_projection(
     return out
 
 
+POS_ORDER = ["QB", "RB", "WR", "TE", "K/P", "IDP", "HC", "Other"]
+POS_COLORS = {
+    "QB": "#d62728", "RB": "#2ca02c", "WR": "#1f77b4", "TE": "#ff7f0e",
+    "K/P": "#9467bd", "IDP": "#8c564b", "HC": "#7f7f7f", "Other": "#bcbd22",
+}
+
+
+def plot_salary_by_position(out: Path | None = None) -> Path:
+    """2026 player salary split by position group: per-team stack + league totals."""
+    mat = salary_by_position()
+    cols = [c for c in POS_ORDER if c in mat.columns]
+    mat = mat[cols]
+    order = mat.sum(axis=1).sort_values().index
+    mat = mat.reindex(order)
+
+    fig, (ax, ax2) = plt.subplots(
+        2, 1, figsize=(12, 9), height_ratios=[3.2, 1], gridspec_kw={"hspace": 0.32}
+    )
+
+    # per-team stacked bars
+    for i, (team, row) in enumerate(mat.iterrows()):
+        cum = 0.0
+        for pos in cols:
+            val = float(row[pos])
+            if val:
+                ax.barh(i, val, left=cum, color=POS_COLORS[pos],
+                        edgecolor="white", linewidth=0.4)
+                cum += val
+        ax.text(cum + 6, i, f"{cum:.0f}", va="center", ha="left", fontsize=8)
+    ax.set_yticks(range(len(mat)))
+    ax.set_yticklabels(mat.index)
+    ax.set_xlabel("2026 player salary (cap units)")
+    ax.set_title("2026 Salary by Position Group, per Team", fontsize=14, fontweight="bold")
+    ax.legend(handles=[Patch(facecolor=POS_COLORS[p], label=p) for p in cols],
+              ncol=len(cols), fontsize=8, loc="lower right", framealpha=0.95)
+    ax.spines[["top", "right"]].set_visible(False)
+
+    # league-wide total by position
+    totals = mat[cols].sum().reindex(cols)
+    ax2.bar(range(len(cols)), totals.values,
+            color=[POS_COLORS[p] for p in cols], edgecolor="white")
+    for i, v in enumerate(totals.values):
+        ax2.text(i, v, f"{v:.0f}", ha="center", va="bottom", fontsize=8)
+    ax2.set_xticks(range(len(cols)))
+    ax2.set_xticklabels(cols)
+    ax2.set_title("League-wide total 2026 salary by position", fontsize=11)
+    ax2.set_ylabel("Cap units")
+    ax2.spines[["top", "right"]].set_visible(False)
+
+    out = out or (FIGURES_DIR / "salary_by_position_2026.png")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
 if __name__ == "__main__":
     p1 = plot_cap_distribution(UPCOMING_SEASON)
     p2 = plot_cap_projection()
-    print(f"Saved {p1}\nSaved {p2}")
+    p3 = plot_salary_by_position()
+    print(f"Saved {p1}\nSaved {p2}\nSaved {p3}")
