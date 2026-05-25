@@ -354,7 +354,6 @@ def player_salaries_2026() -> pd.DataFrame:
     """Per-player 2026 cap salary (active + extensions + rookies + practice squad),
     joined to position group via the player crosswalk."""
     from .contracts import build_2026_contracts
-    from .players import position_group_map
 
     combined, _ = build_2026_contracts()  # active + extensions, salary_2026
     parts = [combined[["team", "player", "salary_2026", "source"]]]
@@ -373,8 +372,11 @@ def player_salaries_2026() -> pd.DataFrame:
     )
 
     allp = pd.concat(parts, ignore_index=True).drop_duplicates(["team", "player"])
-    pg = position_group_map()
-    allp["position_group"] = allp["player"].map(pg).fillna("Other")
+    from .players import attributes_table
+
+    attrs = attributes_table()[["player", "position_group", "age", "years_exp", "espn_id"]]
+    allp = allp.merge(attrs.drop_duplicates("player"), on="player", how="left")
+    allp["position_group"] = allp["position_group"].fillna("Other")
     return allp
 
 
@@ -404,31 +406,35 @@ def position_salary_tables() -> dict[str, pd.DataFrame]:
     allp = player_salaries_2026()
     order = [p for p in _POS_ORDER if p in set(allp["position_group"])]
 
-    per_team = (
-        allp.groupby(["team", "position_group"])["salary_2026"]
-        .agg(players="size", total_salary="sum", avg_salary="mean")
-        .reset_index()
-    )
+    agg = {
+        "players": ("salary_2026", "size"),
+        "total_salary": ("salary_2026", "sum"),
+        "avg_salary": ("salary_2026", "mean"),
+        "avg_age": ("age", "mean"),
+    }
+    per_team = allp.groupby(["team", "position_group"]).agg(**agg).reset_index()
+    per_team["avg_salary"] = per_team["avg_salary"].round(1)
+    per_team["avg_age"] = per_team["avg_age"].round(1)
 
-    league = (
-        allp.groupby("position_group")["salary_2026"]
-        .agg(players="size", total_salary="sum", avg_salary="mean")
-        .reindex(order)
-    )
+    league = allp.groupby("position_group").agg(**agg).reindex(order)
     league["per_roster"] = (league["players"] / len(TEAMS)).round(1)
     league["share_%"] = (100 * league["total_salary"] / league["total_salary"].sum()).round(1)
     league["avg_salary"] = league["avg_salary"].round(1)
-    league = league[["players", "per_roster", "total_salary", "avg_salary", "share_%"]]
+    league["avg_age"] = league["avg_age"].round(1)
+    league = league[
+        ["players", "per_roster", "total_salary", "avg_salary", "avg_age", "share_%"]
+    ]
 
-    count = (
-        per_team.pivot(index="team", columns="position_group", values="players")
-        .reindex(TEAMS)[order].fillna(0).astype(int)
-    )
-    avg = (
-        per_team.pivot(index="team", columns="position_group", values="avg_salary")
-        .reindex(TEAMS)[order].round(1)
-    )
-    return {"league": league, "per_team": per_team, "count": count, "avg": avg}
+    def _pivot(value):
+        return per_team.pivot(index="team", columns="position_group", values=value).reindex(TEAMS)[order]
+
+    return {
+        "league": league,
+        "per_team": per_team,
+        "count": _pivot("players").fillna(0).astype(int),
+        "avg": _pivot("avg_salary").round(1),
+        "age": _pivot("avg_age").round(1),
+    }
 
 
 def reconcile(season: int) -> pd.DataFrame:

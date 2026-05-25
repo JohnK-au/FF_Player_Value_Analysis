@@ -165,6 +165,17 @@ def position_group_map() -> dict[str, str]:
     }
 
 
+def attributes_table(rebuild: bool = False) -> pd.DataFrame:
+    """Crosswalk + nflverse age/experience: player, espn_id, position, group, age."""
+    from .nflverse import player_attributes as nfl_attrs
+
+    cw = load_crosswalk(rebuild=rebuild)[["player", "espn_name", "espn_id", "position"]].copy()
+    cw["espn_id"] = pd.to_numeric(cw["espn_id"], errors="coerce").astype("Int64")
+    cw["position_group"] = cw["position"].map(POSITION_GROUP).fillna("Other")
+    ages = nfl_attrs()[["espn_id", "age", "years_exp"]]
+    return cw.merge(ages, on="espn_id", how="left")
+
+
 def save_crosswalk(df: pd.DataFrame | None = None) -> "pd.Path":
     df = build_crosswalk() if df is None else df
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)

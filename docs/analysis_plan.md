@@ -37,7 +37,11 @@ surface over- and under-valued players and support roster decisions under the ca
   `espn_id` → `data/processed/player_crosswalk.csv`. *(Still to do: sheet-nickname
   → ESPN-team-id map.)*
 - **B2. ESPN performance pull.** Weekly + seasonal fantasy points (our scoring, already computed by ESPN) for the player universe, 2022–2025; also ESPN projections.
-- **B3. nflverse integration (`nfl_data_py`).** Player-id crosswalk (`import_ids` has `espn_id` ↔ `gsis_id`), rosters (birthdate/age, draft year, experience), weekly stats, snap counts, and advanced metrics (NGS, PFR). Join to ESPN via the id crosswalk.
+- **B3. nflverse integration (`nfl_data_py`).** ✅ started (`src/data/nflverse.py`):
+  age (as of the 2026 season) + experience from seasonal rosters, joined on
+  `espn_id` — 97% coverage (only HCs missing, as expected). `players.attributes_table`
+  merges it onto the crosswalk; `cap.position_salary_tables` now reports avg age.
+  *Still to pull: weekly stats, snap counts, and advanced metrics (NGS, PFR).*
 - **B4. Unified player-season dataset.** One row per (player, season): performance (PPG, totals, advanced), attributes (age, position, experience), and — for our players — contract (salary, years remaining, cap hit, status).
 
 Advanced features to engineer (by position): QB — EPA/play, CPOE, aDOT; RB — snap share, target share, rush yards over expected, YAC; WR/TE — target share, air yards, aDOT, separation (NGS), route participation.
