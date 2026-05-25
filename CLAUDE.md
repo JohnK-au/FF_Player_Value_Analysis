@@ -111,7 +111,7 @@ python -m src.data.players   # build contract<->ESPN crosswalk (positions, espn_
 python -m src.data.performance # cache season + weekly (wk1-13) points 2022-2025
 python -m src.data.dataset   # build unified 2026 player dataset + efficiency teaser
 python -m src.models.value   # baseline fair-value model + over/under-valued lists
-python -m src.viz.value      # salary-vs-PPG value scatter (figures/value_scatter_2026.png)
+python -m src.viz.value      # faceted value scatter (salary vs PPG; figures/value_facets_*.png)
 ```
 
 ## Data-shape gotcha (contract sheet)
