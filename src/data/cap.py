@@ -254,6 +254,9 @@ def parse_tags(df: pd.DataFrame | None = None) -> pd.DataFrame:
 # yet (per the manager). Use 0.50 for *new* cuts when projecting forward.
 DEAD_CAP_RATE = 0.20
 
+# Salary cap per team per season (confirmed: CAP USED + CAP SPACE = 1500).
+CAP_TOTAL = 1500
+
 
 def dead_cap(season: int, cuts: pd.DataFrame | None = None) -> pd.Series:
     """Per-team dead cap hitting ``season``.
@@ -267,6 +270,84 @@ def dead_cap(season: int, cuts: pd.DataFrame | None = None) -> pd.Series:
     active = (c["season_cut"] <= season) & (season <= c["season_cut"] + c["yrs_left"] - 1)
     hit = DEAD_CAP_RATE * c["salary_owed"].where(active, 0.0)
     return hit.groupby(c["team"]).sum().reindex(TEAMS).fillna(0.0)
+
+
+def _dead_cap_split(season: int) -> tuple[pd.Series, pd.Series]:
+    """Dead cap hitting ``season``, split into player cuts vs admin penalties."""
+    c = parse_cuts()
+    c = c[c["season_cut"].notna() & c["yrs_left"].notna()].copy()
+    c = c[(c["season_cut"] <= season) & (season <= c["season_cut"] + c["yrs_left"] - 1)]
+    cut = (
+        DEAD_CAP_RATE
+        * c[~c["is_cap_hits_row"]].groupby("team")["salary_owed"].sum()
+    ).reindex(TEAMS).fillna(0.0)
+    pen = (
+        DEAD_CAP_RATE
+        * c[c["is_cap_hits_row"]].groupby("team")["salary_owed"].sum()
+    ).reindex(TEAMS).fillna(0.0)
+    return cut, pen
+
+
+def cap_breakdown(season: int) -> pd.DataFrame:
+    """Per-team salary-cap composition for ``season`` (for figures).
+
+    Columns: the salary components (contracts/extensions/rookies/tags/
+    practice_squad/cuts/penalties), the sheet's CAP USED, and CAP SPACE
+    (= 1500 − CAP USED). Components reconcile to CAP USED within a small
+    adjustment (trade credits + IR-returns), which figures show as a residual.
+    """
+    active = parse_active_contracts()
+    active["years_remaining"] = _num(active["years_remaining"])
+    active["salary"] = _num(active["salary"])
+    rookies = parse_rookies()
+    ext = parse_extensions()
+    tags = parse_tags()
+    ir = parse_ir()
+    caps = parse_cap_summary().query("season == @season").set_index("team")
+    cut_dc, pen_dc = _dead_cap_split(season)
+    ext_players = set(ext["player"])
+    need = season - CURRENT_SEASON + 1
+    psq = ir[ir["designation"] == "PSquad"].copy()
+    psq["end"] = CURRENT_SEASON + _num(psq["yrs_left_excl"]).fillna(0)
+
+    rows = []
+    for team in TEAMS:
+        a = active[active["team"] == team]
+        if season >= UPCOMING_SEASON:
+            contracts = a.loc[
+                (a["years_remaining"] >= need) & (~a["player"].isin(ext_players)),
+                "salary",
+            ].sum()
+            extensions = _num(ext.loc[ext["team"] == team, "salary"]).sum()
+        else:
+            contracts = a.loc[a["years_remaining"] >= need, "salary"].sum()
+            extensions = 0.0
+        rook = sum(
+            rookie_season_salary(r, season)
+            for _, r in rookies[rookies["team"] == team].iterrows()
+        )
+        tag = _num(
+            tags.loc[(tags["team"] == team) & (tags["league_year"] == season), "salary"]
+        ).sum()
+        ps = _num(
+            psq.loc[(psq["team"] == team) & (psq["end"] >= season), "original_salary"]
+        ).sum()
+        sheet_used = caps.loc[team, "cap_used"] if team in caps.index else float("nan")
+        rows.append(
+            {
+                "team": team,
+                "contracts": round(contracts, 1),
+                "extensions": round(extensions, 1),
+                "rookies": round(rook, 1),
+                "tags": round(tag, 1),
+                "practice_squad": round(ps, 1),
+                "cuts": round(cut_dc[team], 1),
+                "penalties": round(pen_dc[team], 1),
+                "sheet_used": round(sheet_used, 1),
+                "cap_space": round(CAP_TOTAL - sheet_used, 1),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def reconcile(season: int) -> pd.DataFrame:
