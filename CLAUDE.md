@@ -27,7 +27,9 @@ Both data sources are wired up and verified end-to-end:
 | Parse contract sheet → tidy table (**active rosters**) | ✅ working | [src/data/contracts.py](src/data/contracts.py) |
 | Parse **Contract Extensions** tab → tidy table | ✅ working | [src/data/contracts.py](src/data/contracts.py) |
 | Parse remaining MCS sections (rookies, tags, IR/PS, cuts, picks) | ⬜ not started | — |
-| Build 2026 per-team cap ledger (rosters + extensions + dead cap) | ⬜ next | — |
+| 2026 contract view (active rolled forward + extensions) | ✅ working | `contracts.build_2026_contracts` |
+| Per-team contract timeline figure | ✅ working | [src/viz/contracts.py](src/viz/contracts.py) |
+| Full 2026 cap ledger (add rookies, tags, dead cap, IR) | ⬜ next | — |
 | Joining performance + contracts | ⬜ not started | — |
 | ML models | ⬜ not started | — |
 | League rules documentation | 🟨 drafted (needs confirmation) | [docs/rules.md](docs/rules.md) |
@@ -54,6 +56,11 @@ sheet data quirk it surfaces: Justin Fields & Christian Kirk (Haft) have a broke
 - Ingestion reads the workbook as **xlsx and caches the 3 tabs by name**
   (`sheets.cache_tabs()` → `data/raw/contracts_<key>.csv`, keys `master_cap`,
   `trade_log`, `contract_extensions`); `sheets.load_tab(key)` loads them.
+- **Reconciliation flag:** 10 of 15 extensions don't match the active roster's
+  team — 6 look like trades (extension team ≠ active team), 4 aren't on any
+  active roster (likely IR/FA). `build_2026_contracts` treats the **extension tab
+  as source of truth** and returns these as notes. *Open: confirm which source is
+  authoritative when they disagree.*
 
 ## Important constraints (read before changing anything)
 
@@ -78,7 +85,9 @@ pip install -r requirements.txt                       # first time
 cp .env.example .env                                  # then fill in real values
 
 python -m src.data.espn      # prints the league's teams + records
-python -m src.data.sheets    # caches the contract sheet to data/raw/
+python -m src.data.sheets    # caches the 3 relevant tabs to data/raw/
+python -m src.data.contracts # parse active rosters + extensions -> data/processed/
+python -m src.viz.contracts  # render figures/team_contracts_2026.png (git-ignored)
 ```
 
 ## Data-shape gotcha (contract sheet)

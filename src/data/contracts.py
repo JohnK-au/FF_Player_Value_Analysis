@@ -26,6 +26,11 @@ from .sheets import RAW_DATA_DIR, load_tab
 # Team nicknames as they appear in the sheet header row (left to right).
 TEAMS = ["Nate", "Seeb", "Silv", "Kerr", "Will", "Drew", "Couc", "Haft"]
 
+# The sheet's active "yrs remain" is measured as of CURRENT_SEASON; UPCOMING is
+# the season the analysis is centered on.
+CURRENT_SEASON = 2025
+UPCOMING_SEASON = 2026
+
 # Some tabs use an alternate spelling for a team (the Contract Extensions tab
 # heads Nate's block "N8").
 _TEAM_ALIASES = {"N8": "Nate"}
@@ -256,6 +261,67 @@ def save_extensions(df: pd.DataFrame | None = None) -> Path:
     out = PROCESSED_DIR / "contract_extensions.csv"
     df.to_csv(out, index=False)
     return out
+
+
+def build_2026_contracts(
+    active: pd.DataFrame | None = None,
+    extensions: pd.DataFrame | None = None,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Build each team's contract commitments for UPCOMING_SEASON (2026) onward.
+
+    Rules (confirmed with the manager):
+    - Salaries are **flat** across a contract's years.
+    - Active ``yrs remain`` is as of CURRENT_SEASON, so a deal survives into 2026
+      iff ``years_remaining >= 2``; from 2026 it has ``years_remaining - 1`` years.
+    - An **extension** overrides the player's deal from 2026: a flat block of
+      ``years_until_end`` years (= extension years + the 1 remaining original
+      year) at the **extension salary**.
+
+    Returns the tidy 2026 contract table plus a list of reconciliation notes
+    (e.g. extension/active team mismatches) — surfaced, not silently resolved.
+    """
+    active = parse_active_contracts() if active is None else active
+    extensions = parse_extensions() if extensions is None else extensions
+    notes: list[str] = []
+
+    a = active.copy()
+    a["years_remaining"] = pd.to_numeric(a["years_remaining"], errors="coerce")
+    for _, r in a[a["years_remaining"].isna()].iterrows():
+        notes.append(f"Dropped {r['team']} {r['player']}: unreadable years_remaining")
+    a = a[a["years_remaining"] >= 2].copy()
+    a["years_2026"] = (a["years_remaining"] - 1).astype(int)
+    a["salary_2026"] = pd.to_numeric(a["salary"], errors="coerce")
+
+    ext_players = set(extensions["player"])
+    # Extensions are the source of truth; drop any active row for an extended
+    # player (regardless of team) so each player appears once.
+    a = a[~a["player"].isin(ext_players)].copy()
+    a["source"] = "active"
+
+    e = extensions.copy()
+    e["years_2026"] = pd.to_numeric(e["years_until_end"], errors="coerce").astype(int)
+    e["salary_2026"] = pd.to_numeric(e["salary"], errors="coerce")
+    e["source"] = "extension"
+
+    # Reconciliation: flag where an extension's team differs from the active sheet.
+    active_team = dict(zip(active["player"], active["team"]))
+    for _, r in e.iterrows():
+        p = r["player"]
+        if p not in active_team:
+            notes.append(f"Extension {r['team']} {p}: no active-roster entry (likely IR/FA)")
+        elif active_team[p] != r["team"]:
+            notes.append(
+                f"Extension {r['team']} {p}: active sheet lists them under "
+                f"{active_team[p]} (traded?)"
+            )
+
+    cols = ["team", "player", "salary_2026", "years_2026", "source"]
+    combined = pd.concat([a[cols], e[cols]], ignore_index=True)
+    combined["last_season"] = UPCOMING_SEASON + combined["years_2026"] - 1
+    combined = combined.sort_values(
+        ["team", "last_season", "salary_2026"], ascending=[True, False, False]
+    ).reset_index(drop=True)
+    return combined, notes
 
 
 if __name__ == "__main__":
