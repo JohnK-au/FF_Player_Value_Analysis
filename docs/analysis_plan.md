@@ -29,7 +29,11 @@ surface over- and under-valued players and support roster decisions under the ca
 - **A3. Salary by position group** — needs positions → depends on the player join (B1).
 
 ### Phase B — Player join & data foundation
-- **B1. Contract ↔ ESPN join.** Match contract-sheet names to ESPN players to attach `position`, `proTeam`, and ESPN player id. Expect name-cleanup (e.g. "Amon Ra" → "Amon-Ra St. Brown"). Also build the sheet-nickname → ESPN-team-id map.
+- **B1. Contract ↔ ESPN join.** ✅ done (`src/data/players.py`): normalized + fuzzy
+  matcher with a small alias table and HC handling; **100% of 242 contract players
+  matched** (all fuzzy matches verified). Crosswalk carries `position`, `proTeam`,
+  `espn_id` → `data/processed/player_crosswalk.csv`. *(Still to do: sheet-nickname
+  → ESPN-team-id map.)*
 - **B2. ESPN performance pull.** Weekly + seasonal fantasy points (our scoring, already computed by ESPN) for the player universe, 2022–2025; also ESPN projections.
 - **B3. nflverse integration (`nfl_data_py`).** Player-id crosswalk (`import_ids` has `espn_id` ↔ `gsis_id`), rosters (birthdate/age, draft year, experience), weekly stats, snap counts, and advanced metrics (NGS, PFR). Join to ESPN via the id crosswalk.
 - **B4. Unified player-season dataset.** One row per (player, season): performance (PPG, totals, advanced), attributes (age, position, experience), and — for our players — contract (salary, years remaining, cap hit, status).

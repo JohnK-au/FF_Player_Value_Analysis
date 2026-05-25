@@ -30,6 +30,7 @@ Both data sources are wired up and verified end-to-end:
 | 2026 contract view (active rolled forward + extensions) | ✅ working | `contracts.build_2026_contracts` |
 | Per-team contract timeline figure | ✅ working | [src/viz/contracts.py](src/viz/contracts.py) |
 | Cap-distribution figures (2026 + 2025–29 projection) | ✅ working | [src/viz/cap.py](src/viz/cap.py) |
+| Contract ↔ ESPN player join (position, espn_id) | ✅ 100% matched | [src/data/players.py](src/data/players.py) |
 | Cap ledger reconciled to sheet CAP USED | ✅ 2025 exact (7/8), 2026 close | `cap.reconcile` |
 | Refine residuals (IR returns in 2026; rookie option edges) | ⬜ minor | — |
 | Joining performance + contracts | ⬜ not started | — |
@@ -95,6 +96,7 @@ python -m src.data.contracts # parse active rosters + extensions -> data/process
 python -m src.data.cap       # parse cap sections + reconcile CAP USED vs the sheet
 python -m src.viz.contracts  # render figures/team_contracts_2026.png (git-ignored)
 python -m src.viz.cap        # render cap_distribution_2026.png + cap_projection_2025_2029.png
+python -m src.data.players   # build contract<->ESPN crosswalk (positions, espn_id)
 ```
 
 ## Data-shape gotcha (contract sheet)
