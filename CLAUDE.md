@@ -41,6 +41,7 @@ Both data sources are wired up and verified end-to-end:
 | Player age/experience (nflverse) join | ✅ 97% (HCs excl.) | [src/data/nflverse.py](src/data/nflverse.py) |
 | ESPN performance 2022–2025 (season + weekly wk1–13) | ✅ working | [src/data/performance.py](src/data/performance.py) |
 | Unified 2026 player dataset (salary+age+production) | ✅ working | [src/data/dataset.py](src/data/dataset.py) |
+| Baseline fair-value model (surplus = actual − fair) | ✅ OOF R²≈0.36 | [src/models/value.py](src/models/value.py) |
 | Cap ledger reconciled to sheet CAP USED | ✅ 2025 exact (7/8), 2026 close | `cap.reconcile` |
 | Refine residuals (IR returns in 2026; rookie option edges) | ⬜ minor | — |
 | Joining performance + contracts | ⬜ not started | — |
@@ -109,6 +110,7 @@ python -m src.viz.cap        # cap_distribution_2026 + cap_projection_2025_2029 
 python -m src.data.players   # build contract<->ESPN crosswalk (positions, espn_id)
 python -m src.data.performance # cache season + weekly (wk1-13) points 2022-2025
 python -m src.data.dataset   # build unified 2026 player dataset + efficiency teaser
+python -m src.models.value   # baseline fair-value model + over/under-valued lists
 ```
 
 ## Data-shape gotcha (contract sheet)

@@ -61,6 +61,12 @@ surface over- and under-valued players and support roster decisions under the ca
 Advanced features to engineer (by position): QB — EPA/play, CPOE, aDOT; RB — snap share, target share, rush yards over expected, YAC; WR/TE — target share, air yards, aDOT, separation (NGS), route participation.
 
 ### Phase C — Fair-value model (value first)
+- ✅ **Baseline done** (`src/models/value.py`): predicts fair 2026 salary from
+  production (PPG, games, consistency) + age + position for skill players;
+  out-of-fold `surplus = actual − fair` flags value. Out-of-fold R² ≈ 0.36,
+  MAE ≈ 32 — a benchmark to beat with usage metrics + a dynasty horizon. Surfaces
+  sensible bargains/overpays but conflates "expensive elite" with "overpaid"
+  (one season of PPG can't see talent/age premium → motivates B3 + dynasty).
 - **C1.** Build positional **replacement levels** and VOR across all NFL players.
 - **C2.** Train **fair-salary** model (e.g. gradient boosting / regularized regression) on rostered players: `salary ~ performance + age + position + advanced`. Predict fair salary for everyone; **surplus = fair − actual** flags value.
 - **C3.** Report **current-season cap efficiency** and a **dynasty value** (C/D combined).
