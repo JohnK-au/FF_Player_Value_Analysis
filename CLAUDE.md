@@ -126,25 +126,24 @@ reading the full cached export:
 Team nicknames in the sheet are `Nate, Seeb, Silv, Kerr, Will, Drew, Couc, Haft`
 — these will need mapping to ESPN team ids for the eventual join.
 
-## Next steps (suggested order)
+## Next steps
 
-1. ~~Parse the active-roster section into a tidy table.~~ ✅ done
-   (`src/data/contracts.py`). **Remaining sheet parsing** (optional, do as needed):
-   rookies, tags, IR/practice-squad, and cuts/dead-cap → fold into one tidy table
-   with a `status` column, reusing the header-label-matching approach. Draft picks
-   and the trade log are lower priority. Also add a sheet-nickname → ESPN-team-id
-   map for the join.
-2. **Pull richer ESPN data** beyond team records: weekly player scores, season
-   stats, and ESPN's own projections (extra `espn-api` calls / API views).
-3. **Build a unified player-value dataset** joining performance + contract cost
-   (match players across ESPN names and the sheet's names — expect name-mismatch
-   cleanup).
-4. **Document the league rules** in `docs/rules.md` (needs clarification from the
-   commissioner — see open questions). Encode the cap logic the analysis relies on.
-5. **Baseline models**: value-vs-salary (which players beat their cap hit) and
-   performance projection over remaining contract years.
-6. **Roster optimization** under the salary cap (which keep/cut/tag/extend moves
-   maximize value).
+The contract/cap parsing and reconciliation are done. The project now pivots to
+the **player-value engine** — see the full roadmap in
+[docs/analysis_plan.md](docs/analysis_plan.md).
+
+Confirmed direction: **fair-value model first**, then performance projection;
+data from **ESPN + nflverse (`nfl_data_py`)**; learn from **all NFL players by
+position**; value reported for **both** current-season (2026) and dynasty horizons.
+
+Immediate next steps when resuming:
+1. **Cap-distribution figures** (buildable now from `cap.py`): total salary vs the
+   1500 cap per team, and the "where salary goes" component breakdown
+   (active/rookie/extension/tag/practice-squad/dead-cap/penalty/trade).
+2. **Player join** (contract sheet ↔ ESPN) to attach positions — unlocks the
+   salary-by-position-group view and all downstream modeling.
+3. **nflverse pull** (ages + advanced metrics) via the `espn_id` ↔ `gsis_id`
+   crosswalk, then build the unified player-season dataset.
 
 ## League rules
 
