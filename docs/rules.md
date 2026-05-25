@@ -45,6 +45,9 @@ data-quality caveat until trades are reconciled.
 - **Cap = 1500 (units) per team, the same every season.** ✅
 - Tracked per team per season as CAP USED / DEAD CAP / CAP SPACE (used + space =
   1500). ✅
+- The cap summary's **DEAD CAP column is a trade cap-adjustment**, *not* dead cap
+  from cuts: e.g. Nate −30 = 30 cap space **gained** in a trade, Silv +30 = 30
+  **given up**. ✅
 
 ## 4. Roster
 
@@ -122,11 +125,20 @@ ESPN roster = **32 slots**: 14 starters + 14 bench + 4 IR. ✅
 
 ## 10. Cuts / dead cap
 
-- Cutting a player costs **50% of their remaining salary**, charged as **50% of
-  the annual salary in each remaining contract year**. ✅
-  - *Example:* cut a $20 player with 4 years left → **$10/year for 4 years**.
-- The sheet's cut note "amount … divided by 5" is **legacy** (the penalty used to
-  be 20%); **old cuts are grandfathered** and unaffected by the change to 50%. ✅
+- A cut charges a **% of the player's salary per remaining contract year**, over
+  the window `[season cut, original end year]`. The sheet's **"salary owed" = the
+  player's full salary** when cut. ✅
+- **Rule going forward: 50%/yr** (cut a $20 player with 4 yrs left → $10/yr × 4).
+  **But every cut currently on the sheet is still charged at the legacy 20%/yr** —
+  the 50% change hasn't been applied yet. ✅ (`cap.py` uses `DEAD_CAP_RATE = 0.20`
+  to match the sheet; use 0.50 for new/projected cuts.)
+- The **"CAP HITS (… divided by 5)" rows are admin-imposed cap penalties** — also
+  20% of the listed value per year, treated like a cut. ✅
+- On the sheet, `yrs left (1-5)` is the penalty-window length; the leading number
+  is the **years of penalty remaining** as of 2025. ✅
+- Reconstructing CAP USED from active + rookies + tags + dead cap (@20%) + the
+  trade adjustment matches the sheet to within a few units (2025 near-exact); the
+  small 2026 residuals are mostly **IR players returning** (not yet added). 🟡
 
 ## 11. Amnesty
 

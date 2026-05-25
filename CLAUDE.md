@@ -26,10 +26,11 @@ Both data sources are wired up and verified end-to-end:
 | ESPN league ingestion (authenticated via `espn-api`) | ✅ working | [src/data/espn.py](src/data/espn.py) |
 | Parse contract sheet → tidy table (**active rosters**) | ✅ working | [src/data/contracts.py](src/data/contracts.py) |
 | Parse **Contract Extensions** tab → tidy table | ✅ working | [src/data/contracts.py](src/data/contracts.py) |
-| Parse remaining MCS sections (rookies, tags, IR/PS, cuts, picks) | ⬜ not started | — |
+| Parse MCS sections: cap summary, rookies, tags, IR, cuts | ✅ working (picks pending) | [src/data/cap.py](src/data/cap.py) |
 | 2026 contract view (active rolled forward + extensions) | ✅ working | `contracts.build_2026_contracts` |
 | Per-team contract timeline figure | ✅ working | [src/viz/contracts.py](src/viz/contracts.py) |
-| Full 2026 cap ledger (add rookies, tags, dead cap, IR) | ⬜ next | — |
+| Cap ledger reconciled to sheet CAP USED | ✅ 2025 near-exact, 2026 close | `cap.reconcile` |
+| Refine residuals (IR returns in 2026; rookie option edges) | ⬜ minor | — |
 | Joining performance + contracts | ⬜ not started | — |
 | ML models | ⬜ not started | — |
 | League rules documentation | 🟨 drafted (needs confirmation) | [docs/rules.md](docs/rules.md) |
@@ -51,8 +52,10 @@ sheet data quirk it surfaces: Justin Fields & Christian Kirk (Haft) have a broke
 - Salary cap is **1500 units/team/season, fixed** (confirmed). Roster = 14
   starters + 14 bench = **28 spots = the 28 veteran contract slots** (pool:
   5×1yr, 5×2yr, 7×3yr, 6×4yr, 5×5yr), + 4 IR, + 1 offline practice-squad player.
-  Cuts cost **50% of remaining salary** (50% of annual salary per remaining
-  year); **amnesty** wipes one cut penalty-free once every 3 seasons.
+  Cut dead cap = a % of full salary per remaining year (**rule 50%, but existing
+  cuts still at legacy 20%** — not yet converted); **amnesty** wipes one cut
+  penalty-free once every 3 seasons. `cap.reconcile()` rebuilds CAP USED from
+  active+rookies+tags+dead-cap+trade-adj and matches the sheet (2025 near-exact).
 - Ingestion reads the workbook as **xlsx and caches the 3 tabs by name**
   (`sheets.cache_tabs()` → `data/raw/contracts_<key>.csv`, keys `master_cap`,
   `trade_log`, `contract_extensions`); `sheets.load_tab(key)` loads them.
@@ -88,6 +91,7 @@ cp .env.example .env                                  # then fill in real values
 python -m src.data.espn      # prints the league's teams + records
 python -m src.data.sheets    # caches the 3 relevant tabs to data/raw/
 python -m src.data.contracts # parse active rosters + extensions -> data/processed/
+python -m src.data.cap       # parse cap sections + reconcile CAP USED vs the sheet
 python -m src.viz.contracts  # render figures/team_contracts_2026.png (git-ignored)
 ```
 
