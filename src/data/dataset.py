@@ -85,6 +85,30 @@ def build_player_dataset() -> pd.DataFrame:
     return df
 
 
+def build_model_features() -> pd.DataFrame:
+    """Base dataset + advanced metrics + draft capital + combine, joined on espn_id.
+
+    The full feature table the fair-value model trains on.
+    """
+    from .advanced import ADV_SEASON, advanced_features
+    from .nflverse import combine_athleticism, draft_capital
+
+    base = build_player_dataset().copy()
+    base["espn_id"] = pd.to_numeric(base["espn_id"], errors="coerce").astype("Int64")
+
+    adv = advanced_features(ADV_SEASON).drop(columns=["gsis_id", "pfr_id"], errors="ignore")
+    tables = [adv, draft_capital(), combine_athleticism()]
+    for t in tables:
+        t["espn_id"] = pd.to_numeric(t["espn_id"], errors="coerce").astype("Int64")
+        t.dropna(subset=["espn_id"], inplace=True)
+        t.drop_duplicates("espn_id", inplace=True)
+
+    out = base
+    for t in tables:
+        out = out.merge(t, on="espn_id", how="left")
+    return out
+
+
 def save_player_dataset(df: pd.DataFrame | None = None) -> "pd.Path":
     df = build_player_dataset() if df is None else df
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)

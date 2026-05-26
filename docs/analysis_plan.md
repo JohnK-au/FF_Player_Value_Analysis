@@ -49,7 +49,10 @@ surface over- and under-valued players and support roster decisions under the ca
   age (as of the 2026 season) + experience from seasonal rosters, joined on
   `espn_id` — 97% coverage (only HCs missing, as expected). `players.attributes_table`
   merges it onto the crosswalk; `cap.position_salary_tables` now reports avg age.
-  *Still to pull: weekly stats, snap counts, and advanced metrics (NGS, PFR).*
+  ✅ **Advanced metrics done** (`src/data/advanced.py`): 19 metrics — target share/
+  WOPR/RACR/EPA/carries from **2025 play-by-play**, NGS (separation/aDOT/RYOE/CPOE),
+  PFR (ybc/yac/pressure/on-target), snap share — plus draft capital + combine
+  (`nflverse.py`). Windowed to fantasy weeks 1–13, cached to Parquet per season.
 - **B4. Unified player dataset.** ✅ started (`src/data/dataset.py`): one row per
   2026 contract player — salary, position group, age, and recent **fantasy
   regular-season** production (2025 fpts/PPG/games/stdev, 2024 PPG), joined on
@@ -61,12 +64,13 @@ surface over- and under-valued players and support roster decisions under the ca
 Advanced features to engineer (by position): QB — EPA/play, CPOE, aDOT; RB — snap share, target share, rush yards over expected, YAC; WR/TE — target share, air yards, aDOT, separation (NGS), route participation.
 
 ### Phase C — Fair-value model (value first)
-- ✅ **Baseline done** (`src/models/value.py`): predicts fair 2026 salary from
-  production (PPG, games, consistency) + age + position for skill players;
-  out-of-fold `surplus = actual − fair` flags value. Out-of-fold R² ≈ 0.36,
-  MAE ≈ 32 — a benchmark to beat with usage metrics + a dynasty horizon. Surfaces
-  sensible bargains/overpays but conflates "expensive elite" with "overpaid"
-  (one season of PPG can't see talent/age premium → motivates B3 + dynasty).
+- ✅ **Model with advanced features** (`src/models/value.py`, HistGradientBoosting,
+  out-of-fold): fair 2026 salary from production + age + position + the 19 advanced
+  metrics + draft capital + combine; `surplus = actual − fair` flags value.
+  Same-model lift from the advanced features: **R² 0.31 → 0.37** (MAE 33.8 → 32.0).
+  Top features: production (ppg), experience/age, draft value, receiving EPA, YAC/att,
+  combine speed. Still conflates "expensive elite" with "overpaid" (a dynasty horizon
+  + multi-year / all-players training set should help further).
 - **C1.** Build positional **replacement levels** and VOR across all NFL players.
 - **C2.** Train **fair-salary** model (e.g. gradient boosting / regularized regression) on rostered players: `salary ~ performance + age + position + advanced`. Predict fair salary for everyone; **surplus = fair − actual** flags value.
 - **C3.** Report **current-season cap efficiency** and a **dynasty value** (C/D combined).

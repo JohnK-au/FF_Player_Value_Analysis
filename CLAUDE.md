@@ -42,7 +42,8 @@ Both data sources are wired up and verified end-to-end:
 | Player age/experience (nflverse) join | ✅ 97% (HCs excl.) | [src/data/nflverse.py](src/data/nflverse.py) |
 | ESPN performance 2022–2025 (season + weekly wk1–13) | ✅ working | [src/data/performance.py](src/data/performance.py) |
 | Unified 2026 player dataset (salary+age+production) | ✅ working | [src/data/dataset.py](src/data/dataset.py) |
-| Baseline fair-value model (surplus = actual − fair) | ✅ OOF R²≈0.36 | [src/models/value.py](src/models/value.py) |
+| Advanced metrics (pbp/NGS/PFR/snaps + draft + combine) | ✅ working | [src/data/advanced.py](src/data/advanced.py), [nflverse.py](src/data/nflverse.py) |
+| Fair-value model (surplus = actual − fair) | ✅ OOF R² 0.37 (advanced) | [src/models/value.py](src/models/value.py) |
 | Cap ledger reconciled to sheet CAP USED | ✅ 2025 exact (7/8), 2026 close | `cap.reconcile` |
 | Refine residuals (IR returns in 2026; rookie option edges) | ⬜ minor | — |
 | Joining performance + contracts | ⬜ not started | — |
