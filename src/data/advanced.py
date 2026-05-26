@@ -11,10 +11,14 @@ import pandas as pd
 
 FANTASY_WEEKS = 13  # league regular season (reg_season_count)
 
-# Latest season with ALL advanced sources available. nflverse publishes NGS / PFR
-# / snaps for 2025, but weekly player stats only through 2024 (in this mirror), so
-# we standardise advanced metrics on 2024 and bump this once 2025 weekly lands.
-ADV_SEASON = 2024
+# All advanced sources cover 2025: NGS / PFR / snaps via nfl_data_py, and the
+# weekly opportunity/EPA metrics derived from 2025 play-by-play (nflverse's
+# pre-aggregated weekly file lags a season, so we compute them from pbp instead).
+ADV_SEASON = 2025
+
+PBP_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{season}.parquet"
+)
 
 
 def _id_crosswalk(season: int) -> pd.DataFrame:
@@ -30,26 +34,40 @@ def _id_crosswalk(season: int) -> pd.DataFrame:
     )
 
 
-def _weekly(season: int, weeks: int) -> pd.DataFrame:
-    """Weekly-derived metrics over weeks 1..weeks (shares/rates averaged, EPA summed)."""
-    import nfl_data_py as nfl
+def _pbp_weekly(season: int, weeks: int) -> pd.DataFrame:
+    """Opportunity / EPA metrics derived from play-by-play (regular season wk 1..weeks).
 
-    w = nfl.import_weekly_data([season])
-    w = w[(w["week"] >= 1) & (w["week"] <= weeks)]
-    return (
-        w.groupby("player_id")
-        .agg(
-            carries=("carries", "sum"),
-            target_share=("target_share", "mean"),
-            wopr=("wopr", "mean"),
-            racr=("racr", "mean"),
-            passing_epa=("passing_epa", "sum"),
-            rushing_epa=("rushing_epa", "sum"),
-            receiving_epa=("receiving_epa", "sum"),
-        )
-        .reset_index()
-        .rename(columns={"player_id": "gsis_id"})
+    Computed from pbp because nflverse's pre-aggregated weekly file lags a season.
+    Player ids in pbp are gsis ids. target/air-yards shares are vs the player's team.
+    """
+    cols = ["week", "season_type", "posteam", "passer_player_id", "rusher_player_id",
+            "receiver_player_id", "complete_pass", "air_yards", "yards_gained", "epa", "rush"]
+    p = pd.read_parquet(PBP_URL.format(season=season), columns=cols)
+    p = p[(p["season_type"] == "REG") & (p["week"] >= 1) & (p["week"] <= weeks)]
+
+    tgt = p[p["receiver_player_id"].notna()]
+    rec = tgt.groupby("receiver_player_id").agg(
+        targets=("posteam", "size"), air=("air_yards", "sum"), receiving_epa=("epa", "sum"),
     )
+    rec["rec_yards"] = tgt[tgt["complete_pass"] == 1].groupby("receiver_player_id")["yards_gained"].sum()
+    rec["team"] = tgt.groupby("receiver_player_id")["posteam"].agg(lambda s: s.mode().iat[0])
+    team = tgt.groupby("posteam").agg(team_tgt=("posteam", "size"), team_air=("air_yards", "sum"))
+    rec = rec.join(team, on="team")
+    rec["target_share"] = rec["targets"] / rec["team_tgt"]
+    air_share = rec["air"] / rec["team_air"]
+    rec["wopr"] = 1.5 * rec["target_share"] + 0.7 * air_share
+    rec["racr"] = rec["rec_yards"] / rec["air"].where(rec["air"] > 0)
+    rec = rec[["target_share", "wopr", "racr", "receiving_epa"]]
+
+    car = p[p["rush"] == 1].groupby("rusher_player_id").agg(
+        carries=("posteam", "size"), rushing_epa=("epa", "sum"),
+    )
+    pas = p[p["passer_player_id"].notna()].groupby("passer_player_id").agg(
+        passing_epa=("epa", "sum"),
+    )
+    out = rec.join([car, pas], how="outer")
+    out.index.name = "gsis_id"
+    return out.reset_index()
 
 
 def _ngs(season: int, weeks: int) -> pd.DataFrame:
@@ -81,7 +99,7 @@ def _ngs(season: int, weeks: int) -> pd.DataFrame:
 
 def advanced_gsis(season: int, weeks: int = FANTASY_WEEKS) -> pd.DataFrame:
     """Per-player gsis-keyed advanced metrics for a season, keyed by espn_id."""
-    feats = _weekly(season, weeks).merge(_ngs(season, weeks), on="gsis_id", how="outer")
+    feats = _pbp_weekly(season, weeks).merge(_ngs(season, weeks), on="gsis_id", how="outer")
     out = _id_crosswalk(season).merge(feats, on="gsis_id", how="right")
     return out[out["espn_id"].notna()].reset_index(drop=True)
 
