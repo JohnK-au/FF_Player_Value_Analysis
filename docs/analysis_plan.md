@@ -82,9 +82,14 @@ Advanced features to engineer (by position): QB — EPA/play, CPOE, aDOT; RB —
 - Combine fair-value + the cap ledger to recommend keep / cut / tag / extend / trade moves that maximize value under the 1500 cap.
 
 ## Immediate next steps (when we resume)
-1. **A1 + A2 figures** (total-vs-cap and where-salary-goes) — buildable now from `cap.py`.
-2. **B1 player join** (contracts ↔ ESPN positions) — unlocks A3 and everything downstream.
-3. **B3 nflverse** pull (ages + advanced) once the join exists.
+Phases A, B (B1–B4) and the first fair-value model are done (OOF R² ≈ 0.37). Next,
+in priority order:
+1. **Expand the training set** *(biggest lever)* — fit on all NFL skill players ×
+   2022–2025 (data retained; `advanced_features(season)` + cached performance work
+   for any year), then score our roster + free agents.
+2. **Dynasty horizon** — age curves + multi-year projected value (current-season
+   AND dynasty value); fixes the "expensive elite = overpaid" artifact.
+3. **Performance projection** (Phase D) → **roster optimization** (Phase E).
 
 ## Open questions for later
 - Exact advanced-metric set to prioritize per position.
