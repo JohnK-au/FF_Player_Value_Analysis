@@ -14,8 +14,9 @@ fuller pitch.
 
 **Docs:** [docs/architecture.md](docs/architecture.md) — codebase layering & where
 features land; [docs/data_sources.md](docs/data_sources.md) — data-scraping
-reference; [docs/rules.md](docs/rules.md) — league cap rules;
-[docs/analysis_plan.md](docs/analysis_plan.md) — the ML roadmap.
+reference; [docs/figures.md](docs/figures.md) — figure catalog (organized under
+`figures/{contracts,cap,value}/`); [docs/rules.md](docs/rules.md) — league cap
+rules; [docs/analysis_plan.md](docs/analysis_plan.md) — the ML roadmap.
 
 Shared paths & league constants live in [`src/config.py`](src/config.py).
 

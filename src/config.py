@@ -11,6 +11,9 @@ DATA_DIR = REPO_ROOT / "data"
 RAW_DATA_DIR = DATA_DIR / "raw"          # cached raw sheet/API pulls (git-ignored)
 PROCESSED_DIR = DATA_DIR / "processed"   # tidy/derived tables (git-ignored)
 FIGURES_DIR = REPO_ROOT / "figures"      # generated figures (git-ignored)
+FIG_CONTRACTS = FIGURES_DIR / "contracts"  # contract timelines
+FIG_CAP = FIGURES_DIR / "cap"              # cap distribution / projection / by-position
+FIG_VALUE = FIGURES_DIR / "value"          # value scatters (static + interactive)
 
 # --- League constants ----------------------------------------------------------
 TEAMS = ["Nate", "Seeb", "Silv", "Kerr", "Will", "Drew", "Couc", "Haft"]

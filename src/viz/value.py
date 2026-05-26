@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 
-from ..config import FIGURES_DIR
+from ..config import FIG_VALUE
 from ..data.espn import get_league
 from ..models.value import CAT_FEATURES, NUM_FEATURES, fair_value_table
 
@@ -122,7 +122,8 @@ def plot_value_facets(
     fig.suptitle(f"Player Value by Position — Salary vs {ylabel}", fontsize=16,
                  fontweight="bold", y=0.99)
 
-    out = out or (FIGURES_DIR / f"value_facets_{y_metric}.png")
+    scale = "log" if logx else "linear"
+    out = out or (FIG_VALUE / f"value_facets_{y_metric}_{scale}.png")
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
@@ -130,5 +131,6 @@ def plot_value_facets(
 
 
 if __name__ == "__main__":
-    print("Saved", plot_value_facets("ppg_2025", logx=True))
-    print("Saved", plot_value_facets("ppg_2yr", logx=True))
+    for metric in ("ppg_2025", "ppg_2yr"):
+        for logx in (True, False):  # log + linear (contract value) for comparison
+            print("Saved", plot_value_facets(metric, logx=logx))

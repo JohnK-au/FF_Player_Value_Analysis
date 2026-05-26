@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
-from ..config import FIGURES_DIR
+from ..config import FIG_CONTRACTS
 from ..data.contracts import UPCOMING_SEASON, TEAMS, build_2026_contracts
 
 _CMAP = plt.get_cmap("YlOrRd")
@@ -84,7 +84,7 @@ def plot_team_contracts(
     )
     cbar.set_label("Salary (cap units)")
 
-    out = out or (FIGURES_DIR / "team_contracts_2026.png")
+    out = out or (FIG_CONTRACTS / "team_contracts_2026.png")
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=130, bbox_inches="tight")
     plt.close(fig)

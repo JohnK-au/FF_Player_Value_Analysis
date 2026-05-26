@@ -19,7 +19,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-from ..config import CAP_TOTAL, FIGURES_DIR
+from ..config import CAP_TOTAL, FIG_CAP
 from ..data.cap import cap_breakdown, salary_by_position
 from ..data.contracts import TEAMS, UPCOMING_SEASON
 
@@ -98,7 +98,7 @@ def plot_cap_distribution(season: int = UPCOMING_SEASON, out: Path | None = None
               loc="lower right", framealpha=0.95)
     ax.spines[["top", "right"]].set_visible(False)
 
-    out = out or (FIGURES_DIR / f"cap_distribution_{season}.png")
+    out = out or (FIG_CAP / f"cap_distribution_{season}.png")
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
@@ -128,7 +128,7 @@ def plot_cap_projection(
         ax.spines[["top", "right"]].set_visible(False)
     axes.ravel()[0].legend(handles=_legend_handles(), ncol=2, fontsize=7, loc="upper right")
 
-    out = out or (FIGURES_DIR / "cap_projection_2025_2029.png")
+    out = out or (FIG_CAP / "cap_projection_2025_2029.png")
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=130, bbox_inches="tight")
     plt.close(fig)
@@ -184,7 +184,7 @@ def plot_salary_by_position(out: Path | None = None) -> Path:
     ax2.set_ylabel("Cap units")
     ax2.spines[["top", "right"]].set_visible(False)
 
-    out = out or (FIGURES_DIR / "salary_by_position_2026.png")
+    out = out or (FIG_CAP / "salary_by_position_2026.png")
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)

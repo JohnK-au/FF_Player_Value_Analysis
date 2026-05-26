@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from ..config import FIGURES_DIR
+from ..config import FIG_VALUE
 from ..data.espn import get_league
 from ..models.value import fair_value_table
 
@@ -53,7 +53,7 @@ def plot_interactive(y_metric: str = "ppg_2025", out: Path | None = None) -> Pat
     fig.update_xaxes(matches=None)
     fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
 
-    out = out or (FIGURES_DIR / "value_interactive.html")
+    out = out or (FIG_VALUE / "value_interactive.html")
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.write_html(str(out), include_plotlyjs="inline")
     return out
