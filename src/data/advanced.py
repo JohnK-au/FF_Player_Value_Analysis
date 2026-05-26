@@ -2,8 +2,8 @@
 
 Windows weekly/Next-Gen-Stats sources to the fantasy regular season
 (weeks 1..FANTASY_WEEKS) and joins to ``espn_id`` via the seasonal-roster id
-crosswalk. This module covers the gsis-keyed metrics (weekly_data + NGS); PFR /
-snaps and draft / combine arrive in companion functions.
+crosswalk. Covers the gsis-keyed metrics (pbp-derived opportunity/EPA + NGS) and
+the pfr-keyed metrics (PFR advanced + snap share). Draft / combine arrive next.
 """
 from __future__ import annotations
 
@@ -97,18 +97,50 @@ def _ngs(season: int, weeks: int) -> pd.DataFrame:
     )
 
 
-def advanced_gsis(season: int, weeks: int = FANTASY_WEEKS) -> pd.DataFrame:
-    """Per-player gsis-keyed advanced metrics for a season, keyed by espn_id."""
-    feats = _pbp_weekly(season, weeks).merge(_ngs(season, weeks), on="gsis_id", how="outer")
-    out = _id_crosswalk(season).merge(feats, on="gsis_id", how="right")
+def _pfr(season: int) -> pd.DataFrame:
+    """PFR advanced rate stats (full season), keyed by pfr_id."""
+    import nfl_data_py as nfl
+
+    rush = nfl.import_seasonal_pfr("rush", [season])[["pfr_id", "ybc_att", "yac_att"]]
+    pas = nfl.import_seasonal_pfr("pass", [season])[["pfr_id", "pressure_pct", "on_tgt_pct"]]
+    return rush.merge(pas, on="pfr_id", how="outer")
+
+
+def _snaps(season: int, weeks: int) -> pd.DataFrame:
+    """Average offensive snap share over the regular season (wk 1..weeks), by pfr_id."""
+    import nfl_data_py as nfl
+
+    s = nfl.import_snap_counts([season])
+    s = s[(s["game_type"] == "REG") & (s["week"] >= 1) & (s["week"] <= weeks)]
+    return (
+        s.groupby("pfr_player_id")
+        .agg(snap_pct=("offense_pct", "mean"))
+        .reset_index()
+        .rename(columns={"pfr_player_id": "pfr_id"})
+    )
+
+
+def advanced_features(season: int = ADV_SEASON, weeks: int = FANTASY_WEEKS) -> pd.DataFrame:
+    """All selected advanced metrics for a season, keyed by espn_id.
+
+    gsis-keyed (pbp + NGS) and pfr-keyed (PFR + snaps) sources joined to the
+    roster crosswalk; one row per rostered player (NaN where a metric doesn't apply).
+    """
+    xwalk = _id_crosswalk(season)  # gsis_id, espn_id, pfr_id
+    gsis_feats = _pbp_weekly(season, weeks).merge(_ngs(season, weeks), on="gsis_id", how="outer")
+    pfr_feats = _pfr(season).merge(_snaps(season, weeks), on="pfr_id", how="outer")
+    out = (
+        xwalk.merge(gsis_feats, on="gsis_id", how="left")
+        .merge(pfr_feats, on="pfr_id", how="left")
+    )
     return out[out["espn_id"].notna()].reset_index(drop=True)
 
 
 if __name__ == "__main__":
-    df = advanced_gsis(ADV_SEASON)
+    df = advanced_features(ADV_SEASON)
     metric_cols = [c for c in df.columns if c not in ("gsis_id", "espn_id", "pfr_id")]
-    print(f"{len(df)} players with advanced (gsis) metrics; "
-          f"{int(df['espn_id'].notna().sum())} mapped to espn_id\n")
-    print(f"metric columns ({len(metric_cols)}): {metric_cols}\n")
-    cols = ["target_share", "wopr", "carries", "ryoe_per_att", "avg_separation", "adot", "cpoe"]
-    print(df.dropna(subset=["target_share"]).nlargest(6, "wopr")[["espn_id"] + cols].to_string(index=False))
+    print(f"{len(df)} rostered players; {len(metric_cols)} advanced metrics\n")
+    print(f"metrics: {metric_cols}\n")
+    print("coverage:")
+    for c in metric_cols:
+        print(f"  {c}: {int(df[c].notna().sum())}")
