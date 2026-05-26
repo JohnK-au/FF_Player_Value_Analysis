@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import pandas as pd
 
+from ..config import PROCESSED_DIR
+from .cache import cached_parquet
+
 FANTASY_WEEKS = 13  # league regular season (reg_season_count)
+ADV_CACHE_DIR = PROCESSED_DIR / "advanced"
 
 # All advanced sources cover 2025: NGS / PFR / snaps via nfl_data_py, and the
 # weekly opportunity/EPA metrics derived from 2025 play-by-play (nflverse's
@@ -120,12 +124,9 @@ def _snaps(season: int, weeks: int) -> pd.DataFrame:
     )
 
 
-def advanced_features(season: int = ADV_SEASON, weeks: int = FANTASY_WEEKS) -> pd.DataFrame:
-    """All selected advanced metrics for a season, keyed by espn_id.
-
-    gsis-keyed (pbp + NGS) and pfr-keyed (PFR + snaps) sources joined to the
-    roster crosswalk; one row per rostered player (NaN where a metric doesn't apply).
-    """
+def _build_advanced(season: int, weeks: int) -> pd.DataFrame:
+    """Compute all selected advanced metrics for a season (one row per rostered
+    player, keyed by espn_id; NaN where a metric doesn't apply)."""
     xwalk = _id_crosswalk(season)  # gsis_id, espn_id, pfr_id
     gsis_feats = _pbp_weekly(season, weeks).merge(_ngs(season, weeks), on="gsis_id", how="outer")
     pfr_feats = _pfr(season).merge(_snaps(season, weeks), on="pfr_id", how="outer")
@@ -134,6 +135,21 @@ def advanced_features(season: int = ADV_SEASON, weeks: int = FANTASY_WEEKS) -> p
         .merge(pfr_feats, on="pfr_id", how="left")
     )
     return out[out["espn_id"].notna()].reset_index(drop=True)
+
+
+def advanced_features(
+    season: int = ADV_SEASON, weeks: int = FANTASY_WEEKS, refresh: bool = False
+) -> pd.DataFrame:
+    """Selected advanced metrics for a season, cached to Parquet.
+
+    Completed seasons are pulled/computed once and read from disk thereafter;
+    pass ``refresh=True`` for the in-progress season.
+    """
+    return cached_parquet(
+        ADV_CACHE_DIR / f"advanced_{season}.parquet",
+        lambda: _build_advanced(season, weeks),
+        refresh=refresh,
+    )
 
 
 if __name__ == "__main__":

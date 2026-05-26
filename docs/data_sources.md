@@ -143,6 +143,14 @@ production and **falls back to full-season** where weekly is missing, with a
 | `data/processed/performance.csv`, `performance_weekly.csv` | `performance.py` |
 | `data/processed/player_dataset_2026.csv`, `position_salary_2026.csv` | `dataset.py` / `cap.py` |
 
+**Caching policy.** Completed seasons are immutable, so the heavier nflverse pulls
+are computed once and read from **Parquet** thereafter (≈4 s build → instant
+read): advanced metrics at `data/processed/advanced/advanced_<season>.parquet`
+and player ages at `attributes/ages_<season>.parquet` (see
+[`src/data/cache.py`](../src/data/cache.py)). Pass `refresh=True` to re-pull —
+needed only for the in-progress season. Contract/ESPN tables are cached as CSV.
+No database: flat files suit this scale (one user, a few thousand player-seasons).
+
 ## Re-running the pipeline
 
 ```bash

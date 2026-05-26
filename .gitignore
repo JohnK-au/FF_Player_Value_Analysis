@@ -27,6 +27,7 @@ secrets/
 data/raw/
 *.csv
 *.xlsx
+*.parquet
 
 # Figures (contain league data — names, salaries)
 figures/

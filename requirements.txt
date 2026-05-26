@@ -6,6 +6,7 @@ python-dotenv
 openpyxl          # read the Google Sheet workbook (xlsx export) by tab name
 espn-api          # ESPN fantasy league data (private leagues via cookie auth)
 nfl_data_py       # nflverse player data: age, experience, advanced stats
+pyarrow           # Parquet read/write for cached finalized-season tables
 
 matplotlib        # visualizations
 plotly            # interactive (hover) visualizations

@@ -7,14 +7,28 @@ from __future__ import annotations
 
 import pandas as pd
 
+from ..config import PROCESSED_DIR
+from .cache import cached_parquet
+
 DEFAULT_SEASON = 2025
 SEASON_START = "2026-09-01"  # reference date for "age entering the 2026 season"
+ATTR_CACHE_DIR = PROCESSED_DIR / "attributes"
 
 
 def player_attributes(
-    season: int = DEFAULT_SEASON, as_of: str = SEASON_START
+    season: int = DEFAULT_SEASON, as_of: str = SEASON_START, refresh: bool = False
 ) -> pd.DataFrame:
-    """Per-player age (as of ``as_of``) and experience, keyed by ``espn_id``."""
+    """Per-player age (as of ``as_of``) and experience, keyed by ``espn_id``.
+
+    Cached to Parquet per season (completed seasons are immutable)."""
+    return cached_parquet(
+        ATTR_CACHE_DIR / f"ages_{season}.parquet",
+        lambda: _build_attributes(season, as_of),
+        refresh=refresh,
+    )
+
+
+def _build_attributes(season: int, as_of: str) -> pd.DataFrame:
     import nfl_data_py as nfl
 
     r = nfl.import_seasonal_rosters([season])
