@@ -64,32 +64,60 @@ surface over- and under-valued players and support roster decisions under the ca
 Advanced features to engineer (by position): QB — EPA/play, CPOE, aDOT; RB — snap share, target share, rush yards over expected, YAC; WR/TE — target share, air yards, aDOT, separation (NGS), route participation.
 
 ### Phase C — Fair-value model (value first)
-- ✅ **Model with advanced features** (`src/models/value.py`, HistGradientBoosting,
-  out-of-fold): fair 2026 salary from production + age + position + the 19 advanced
-  metrics + draft capital + combine; `surplus = actual − fair` flags value.
-  Same-model lift from the advanced features: **R² 0.31 → 0.37** (MAE 33.8 → 32.0).
-  Top features: production (ppg), experience/age, draft value, receiving EPA, YAC/att,
-  combine speed. Still conflates "expensive elite" with "overpaid" (a dynasty horizon
-  + multi-year / all-players training set should help further).
-- **C1.** Build positional **replacement levels** and VOR across all NFL players.
-- **C2.** Train **fair-salary** model (e.g. gradient boosting / regularized regression) on rostered players: `salary ~ performance + age + position + advanced`. Predict fair salary for everyone; **surplus = fair − actual** flags value.
+
+**Design decision (2026-05-27): anchor fair value to production, not to prices.**
+A `salary ~ features` model only learns the market's *average* pricing, so it cannot
+flag *systematic* mispricing — and we believe the market is inefficient. So the
+engine now has **two lenses** (`src/models/value.py`):
+- ✅ **PRIMARY — production-anchored (`combined_value_table`/`production_value_table`).**
+  Value-over-replacement (VOR) in our scoring, replacement levels from the 8-team
+  starting lineup (rules §4) over the full NFL pool, priced to cap units by
+  redistributing the league's *total* skill-cap spend by VOR. `surplus_prod` flags
+  mispricing against on-field value, catching league-wide bias. VOR is
+  **downside-risk-adjusted** (`vor_adj = vor − 0.5·downside`) so boom-bust players
+  are marked down for *bust* weeks only — see Phase D.
+- ✅ **SECONDARY — market-fit.** The original `salary ~ features` HistGBR model
+  (advanced lift R² 0.31 → 0.37), kept as a "what the market pays" comparison. Its
+  R² is a *diagnostic we do NOT maximize* — a perfect fit would call everyone fair.
+- ✅ **C0/C1.** Expanded training set ([`population.py`](../src/data/population.py):
+  all NFL skill players × 2022–2025, 2,659 rows) + **production model**
+  ([`production.py`](../src/models/production.py): expected PPG, OOF **R² 0.80**)
+  + positional **replacement levels / VOR**.
 - **C3.** Report **current-season cap efficiency** and a **dynasty value** (C/D combined).
 
-### Phase D — Performance projection (value second)
+**Known limitations to address next:** values use *single-season* (2025) production,
+so down/injury years distort (e.g. Jefferson) and **consistency/variance is ignored**
+— mean PPG treats a boom-bust player the same as a steady one, which is wrong for a
+weekly H2H league (see Phase D). `prod_fair` magnitudes are auction-style concentrated
+(trust ranking over literal dollars).
+
+### Phase D — Performance projection & risk (value second)
 - Project future PPG over contract years using **age curves by position** (fit on historical nflverse data) + recent performance + advanced metrics. Feeds dynasty value.
+- ✅ **Consistency / variance (first cut done).** Value a steady player above a
+  boom-bust one with the same mean — this is a **weekly head-to-head** league (you
+  bank a win, not a season total; a 0 loses the matchup). Implemented as a
+  **downside-deviation** penalty on VOR (`production.weekly_consistency` →
+  `vor_adj = vor − λ·downside`, λ=`value.RISK_LAMBDA`=0.5). Uses *downside* (shortfalls
+  below a player's own average), **not** symmetric stdev, so big ceiling weeks aren't
+  punished (boom weeks must not hurt elite RBs like Gibbs/Bijan — user-confirmed).
+  Distinct from *sustainability* (fluky efficiency/TD spikes inflating the mean),
+  which the usage-based `production.expected_ppg` already dampens.
+  *Still to do:* the replacement baseline isn't risk-adjusted (no NFL-wide weekly
+  data), and a **weekly win-probability** simulation would be more principled.
 
 ### Phase E — Roster optimization (later)
 - Combine fair-value + the cap ledger to recommend keep / cut / tag / extend / trade moves that maximize value under the 1500 cap.
 
 ## Immediate next steps (when we resume)
-Phases A, B (B1–B4) and the first fair-value model are done (OOF R² ≈ 0.37). Next,
-in priority order:
-1. **Expand the training set** *(biggest lever)* — fit on all NFL skill players ×
-   2022–2025 (data retained; `advanced_features(season)` + cached performance work
-   for any year), then score our roster + free agents.
-2. **Dynasty horizon** — age curves + multi-year projected value (current-season
-   AND dynasty value); fixes the "expensive elite = overpaid" artifact.
-3. **Performance projection** (Phase D) → **roster optimization** (Phase E).
+Phases A, B (B1–B4) and Phase C (both-lens fair value: production-anchored VOR +
+market-fit; production model OOF R² 0.80) are done. Next, in priority order:
+1. **Dynasty horizon** — the production lens values on single-season 2025 mean
+   (consistency is now risk-adjusted, but aging/projection aren't). Add age curves +
+   multi-year projection (`production.expected_ppg` + multi-season history) so young
+   cheap players and aging stars are valued right; report current-season AND dynasty.
+2. **Make `prod_fair` actionable** — budget-/roster-constrained pricing so dollar
+   fair values land in a realistic range (currently auction-style concentrated).
+3. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
 
 ## Open questions for later
 - Exact advanced-metric set to prioritize per position.

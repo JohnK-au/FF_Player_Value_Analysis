@@ -23,7 +23,7 @@ Shared paths & league constants live in [`src/config.py`](src/config.py).
 - Public repo: `JohnK-au/FF_Player_Value_Analysis`
 - Language: Python 3 (a local `.venv` is used for dependencies)
 
-## Current state — as of 2026-05-25
+## Current state — as of 2026-05-27
 
 Both data sources are wired up and verified end-to-end:
 
@@ -43,11 +43,13 @@ Both data sources are wired up and verified end-to-end:
 | ESPN performance 2022–2025 (season + weekly wk1–13) | ✅ working | [src/data/performance.py](src/data/performance.py) |
 | Unified 2026 player dataset (salary+age+production) | ✅ working | [src/data/dataset.py](src/data/dataset.py) |
 | Advanced metrics (pbp/NGS/PFR/snaps + draft + combine) | ✅ working | [src/data/advanced.py](src/data/advanced.py), [nflverse.py](src/data/nflverse.py) |
-| Fair-value model (surplus = actual − fair) | ✅ OOF R² 0.37 (advanced) | [src/models/value.py](src/models/value.py) |
+| League-wide training frame (all NFL skill players × 2022–2025) | ✅ 2,659 rows | [src/data/population.py](src/data/population.py) |
+| Production model (expected PPG) + replacement levels/VOR | ✅ OOF R² 0.80 | [src/models/production.py](src/models/production.py) |
+| Fair-value model — **2 lenses**: production-anchored (VOR→$, downside-risk-adjusted) + market-fit | ✅ working | [src/models/value.py](src/models/value.py) |
 | Cap ledger reconciled to sheet CAP USED | ✅ 2025 exact (7/8), 2026 close | `cap.reconcile` |
 | Refine residuals (IR returns in 2026; rookie option edges) | ⬜ minor | — |
-| Joining performance + contracts | ⬜ not started | — |
-| ML models | ⬜ not started | — |
+| Joining performance + contracts | ✅ done | [src/data/dataset.py](src/data/dataset.py) |
+| ML models (production + fair value) | ✅ first cut done | [src/models/](src/models/) |
 | League rules documentation | 🟨 drafted (needs confirmation) | [docs/rules.md](docs/rules.md) |
 
 `src/data/espn.py` was verified pulling the **2025** season (8 teams, records).
@@ -112,7 +114,9 @@ python -m src.viz.cap        # cap_distribution_2026 + cap_projection_2025_2029 
 python -m src.data.players   # build contract<->ESPN crosswalk (positions, espn_id)
 python -m src.data.performance # cache season + weekly (wk1-13) points 2022-2025
 python -m src.data.dataset   # build unified 2026 player dataset + efficiency teaser
-python -m src.models.value   # baseline fair-value model + over/under-valued lists
+python -m src.data.population # build all-NFL-skill-players × 2022-2025 training frame
+python -m src.models.production # production model (exp PPG, OOF R²) + replacement levels/VOR
+python -m src.models.value   # both-lens fair value (production-anchored + market-fit) + over/under lists
 python -m src.viz.value      # faceted value scatter (salary vs PPG; figures/value_facets_*.png)
 python -m src.viz.value_interactive # interactive hover scatter -> figures/value_interactive.html
 ```
@@ -153,19 +157,40 @@ Team nicknames in the sheet are `Nate, Seeb, Silv, Kerr, Will, Drew, Couc, Haft`
 **Done so far:** contract/cap parsing + reconciliation; figures (contracts, cap,
 salary-by-position, value scatters static+interactive); contract↔ESPN player join;
 ages; ESPN performance (season + weekly wk1–13); the 19 advanced metrics
-(pbp/NGS/PFR/snaps) + draft capital + combine (cached to Parquet); and the
-fair-value model — out-of-fold **R² ≈ 0.37** with advanced features
-(top drivers: production, experience/age, draft value, receiving EPA). Full
-roadmap in [docs/analysis_plan.md](docs/analysis_plan.md).
+(pbp/NGS/PFR/snaps) + draft capital + combine (cached to Parquet); the **expanded
+training set** (all NFL skill players × 2022–2025 = 2,659 rows, [population.py](src/data/population.py));
+a **production model** (expected PPG, OOF **R² 0.80**, [production.py](src/models/production.py));
+and a **two-lens fair-value engine** ([value.py](src/models/value.py)). Full roadmap
+in [docs/analysis_plan.md](docs/analysis_plan.md).
+
+**Key design decision (2026-05-27):** fair value is **anchored to objective
+production (VOR), not fit to actual salaries.** A `salary ~ features` model learns
+the market's *average* pricing, so it structurally cannot flag *systematic*
+mispricing (e.g. the league overpaying elite QBs) — and the user believes the
+market is inefficient. So the **primary lens is production-anchored**: value over
+replacement (per the 8-team starting lineup, rules §4) priced into cap units by
+redistributing the league's total skill-cap spend by VOR. The old `salary~features`
+model is **kept as a secondary "market price" lens**; its R² is now a *diagnostic
+we deliberately do NOT maximize* (a perfect fit would call everyone fair). The gap
+between the two lenses is the signal. (Top output insight: in a 1-QB league
+replacement QB ≈ 22 PPG, so Mahomes/Lamar at 100–117 read as heavily overpaid;
+elite young RB/WR on cheap deals read as big bargains.) VOR is **risk-adjusted for
+consistency**: `vor_adj = vor − 0.5·downside_deviation` (`value.RISK_LAMBDA`),
+penalizing *bust* weeks (floor risk in a weekly H2H league) but **not** big ceiling
+weeks — boom weeks must not hurt elite RBs like Gibbs/Bijan (user-confirmed).
 
 **Immediate next steps when resuming (priority order):**
-1. **Expand the training set** *(biggest R² lever)* — train on *all* NFL skill
-   players × 2022–2025 (thousands of rows, not 156). All seasons are retained and
-   `advanced_features(season)` / `performance` work for any year, so the data is
-   ready. Learn the production→value curve robustly, then score our roster + FAs.
-2. **Dynasty horizon** — age curves + multi-year projected value, so young cheap
-   players and aging stars are valued right (fixes "expensive elite = overpaid",
-   e.g. Puka/Mahomes). Report current-season *and* dynasty value.
+1. **Dynasty horizon** *(now the biggest lever)* — the production lens currently
+   values on **single-season 2025** production, so a down/injury year tanks a star
+   (e.g. Justin Jefferson ~11 PPG → "overpaid") and 1-QB VOR is harsh on QBs. Add
+   age curves + multi-year projected value (use `production.expected_ppg` +
+   multi-season history) so young cheap players and aging stars are valued right.
+   Report current-season *and* dynasty value.
+2. **Make `prod_fair` more actionable** — the VOR→$ redistribution is auction-style
+   and **concentrated** (elite fair values reach ~1,090 — risk-adjusting shrank the
+   positive-VOR pool and raised the per-point rate — vs the ~200 actual max), so
+   trust the *ranking/direction* over the literal magnitude. Consider a budget-/
+   roster-constrained or compressed pricing for realistic dollar targets.
 3. **Performance projection** (orig. Phase D): forecast PPG over contract years.
 4. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
 
