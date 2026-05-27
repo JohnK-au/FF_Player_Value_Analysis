@@ -38,6 +38,8 @@ ADV_NUM = [
     "passing_epa", "avg_separation", "yac_above_expected", "adot", "catch_pct",
     "ryoe_per_att", "time_to_los", "cpoe", "ybc_att", "yac_att", "pressure_pct",
     "on_tgt_pct", "snap_pct",
+    # team/offense context (efficiency-driven scoring): pass-catcher value depends on QB/offense
+    "team_pass_epa", "team_cpoe", "team_rush_epa", "team_pass_rate",
 ]
 DRAFT_NUM = ["draft_value", "draft_round", "undrafted"]
 COMBINE_NUM = ["forty", "vertical", "broad_jump"]

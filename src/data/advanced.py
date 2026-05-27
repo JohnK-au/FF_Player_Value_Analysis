@@ -45,7 +45,8 @@ def _pbp_weekly(season: int, weeks: int) -> pd.DataFrame:
     Player ids in pbp are gsis ids. target/air-yards shares are vs the player's team.
     """
     cols = ["week", "season_type", "posteam", "passer_player_id", "rusher_player_id",
-            "receiver_player_id", "complete_pass", "air_yards", "yards_gained", "epa", "rush"]
+            "receiver_player_id", "complete_pass", "air_yards", "yards_gained", "epa",
+            "cpoe", "rush"]
     p = pd.read_parquet(PBP_URL.format(season=season), columns=cols)
     p = p[(p["season_type"] == "REG") & (p["week"] >= 1) & (p["week"] <= weeks)]
 
@@ -71,7 +72,35 @@ def _pbp_weekly(season: int, weeks: int) -> pd.DataFrame:
     )
     out = rec.join([car, pas], how="outer")
     out.index.name = "gsis_id"
-    return out.reset_index()
+
+    # --- Team/offense efficiency context (same pbp), joined via each player's modal team.
+    # Pass-catcher value depends on QB/offense (efficiency-driven scoring), so attach the
+    # team's passing efficiency (and rushing efficiency for RBs).
+    dropbacks = p[p["passer_player_id"].notna()]
+    rushes = p[p["rush"] == 1]
+    pass_n = dropbacks.groupby("posteam").size()
+    rush_n = rushes.groupby("posteam").size()
+    team_ctx = pd.DataFrame({
+        "team_pass_epa": dropbacks.groupby("posteam")["epa"].mean(),
+        "team_cpoe": dropbacks.groupby("posteam")["cpoe"].mean(),
+        "team_rush_epa": rushes.groupby("posteam")["epa"].mean(),
+        "team_pass_rate": pass_n / (pass_n + rush_n),
+    })
+    team_ctx.index.name = "team"
+
+    # each player's team = modal posteam across the plays they appear in (any role)
+    roles = pd.concat([
+        p.loc[p["receiver_player_id"].notna(), ["receiver_player_id", "posteam"]]
+            .rename(columns={"receiver_player_id": "gsis_id"}),
+        p.loc[p["rusher_player_id"].notna(), ["rusher_player_id", "posteam"]]
+            .rename(columns={"rusher_player_id": "gsis_id"}),
+        p.loc[p["passer_player_id"].notna(), ["passer_player_id", "posteam"]]
+            .rename(columns={"passer_player_id": "gsis_id"}),
+    ])
+    player_team = roles.groupby("gsis_id")["posteam"].agg(lambda s: s.mode().iat[0]).rename("team")
+
+    out = out.join(player_team)  # 'team' column, still indexed by gsis_id
+    return out.reset_index().merge(team_ctx.reset_index(), on="team", how="left")
 
 
 def _ngs(season: int, weeks: int) -> pd.DataFrame:
@@ -154,7 +183,7 @@ def advanced_features(
 
 if __name__ == "__main__":
     df = advanced_features(ADV_SEASON)
-    metric_cols = [c for c in df.columns if c not in ("gsis_id", "espn_id", "pfr_id")]
+    metric_cols = [c for c in df.columns if c not in ("gsis_id", "espn_id", "pfr_id", "team")]
     print(f"{len(df)} rostered players; {len(metric_cols)} advanced metrics\n")
     print(f"metrics: {metric_cols}\n")
     print("coverage:")
