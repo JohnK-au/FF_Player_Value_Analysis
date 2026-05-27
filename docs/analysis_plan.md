@@ -85,11 +85,22 @@ engine now has **two lenses** (`src/models/value.py`):
   + positional **replacement levels / VOR**.
 - **C3.** Report **current-season cap efficiency** and a **dynasty value** (C/D combined).
 
-**Known limitations to address next:** values use *single-season* (2025) production,
-so down/injury years distort (e.g. Jefferson) and **consistency/variance is ignored**
-— mean PPG treats a boom-bust player the same as a steady one, which is wrong for a
-weekly H2H league (see Phase D). `prod_fair` magnitudes are auction-style concentrated
-(trust ranking over literal dollars).
+- ✅ **Team/offense efficiency context** added to `ADV_NUM` (`team_pass_epa`/`team_cpoe`/
+  `team_rush_epa`/`team_pass_rate`, from the same pbp) → production R² 0.80→0.81, market lens
+  +adv 0.37→0.42.
+
+**⚠️ Known issue — production-lens pricing is degenerate (fix FIRST, found 2026-05-27).**
+The VOR→$ scheme floors **130/155 (84%) of players to `prod_fair=1`**; only 25 (positive
+risk-adjusted VOR) absorb the whole ~7,500-unit pool (Puka ≈ 1,090). Causes: 8-team high
+replacement (67% ≤ replacement pre-risk); the consistency penalty is too harsh & **asymmetric**
+(`vor − 0.5·downside` only on the player, not the replacement → AJ Brown flipped negative);
+linear redistribution + a **$1 floor** over-concentrate. **Fix:** realistic baseline instead of
+the $1 floor (price above a *deep* baseline, or a per-roster-spot floor + redistribute the
+surplus); gentler/symmetric risk penalty; bound/compress concentration.
+
+**Other limitations (the projection work addresses these):** values use *single-season* (2025)
+production, so down/injury years distort (e.g. Jefferson); the replacement baseline isn't
+risk-adjusted.
 
 ### Phase D — Performance projection & risk (value second)
 - Project future PPG over contract years using **age curves by position** (fit on historical nflverse data) + recent performance + advanced metrics. Feeds dynasty value.
@@ -109,15 +120,18 @@ weekly H2H league (see Phase D). `prod_fair` magnitudes are auction-style concen
 - Combine fair-value + the cap ledger to recommend keep / cut / tag / extend / trade moves that maximize value under the 1500 cap.
 
 ## Immediate next steps (when we resume)
-Phases A, B (B1–B4) and Phase C (both-lens fair value: production-anchored VOR +
-market-fit; production model OOF R² 0.80) are done. Next, in priority order:
-1. **Dynasty horizon** — the production lens values on single-season 2025 mean
-   (consistency is now risk-adjusted, but aging/projection aren't). Add age curves +
-   multi-year projection (`production.expected_ppg` + multi-season history) so young
-   cheap players and aging stars are valued right; report current-season AND dynasty.
-2. **Make `prod_fair` actionable** — budget-/roster-constrained pricing so dollar
-   fair values land in a realistic range (currently auction-style concentrated).
-3. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
+An approved plan to build per-player context + projection + dynasty value + a Streamlit
+app is **in progress on branch `value-engine-projection-app`** (M1 data dictionary + S1 team
+context done & pushed). Next, in priority order:
+1. **Fix production-lens pricing (FIRST)** — see the Known issue above: realistic baseline
+   instead of the $1 floor; gentler/symmetric risk penalty; bound/compress concentration.
+2. **Per-player context** (`src/data/context.py`): baseline/delta/z + `year_type` (down/up/par),
+   no-leakage `shift(1).rolling`.
+3. **Next-season projection** (`src/models/projection.py`) + age curves; then **dynasty value**
+   (current + multi-year via `years_2026`) — fixes single-season distortions (Jefferson/AJ Brown).
+4. **Streamlit app**: market/driver explorer, over/under board, value card, roster view
+   (drop/extend/tag/keep), auction bid targets, trade evaluator.
+5. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
 
 ## Open questions for later
 - Exact advanced-metric set to prioritize per position.
