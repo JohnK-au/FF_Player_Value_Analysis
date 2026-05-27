@@ -14,7 +14,8 @@ fuller pitch.
 
 **Docs:** [docs/architecture.md](docs/architecture.md) — codebase layering & where
 features land; [docs/data_sources.md](docs/data_sources.md) — data-scraping
-reference; [docs/figures.md](docs/figures.md) — figure catalog (organized under
+reference; [docs/data_dictionary.md](docs/data_dictionary.md) — data assets, scope,
+& stat/acronym glossary; [docs/figures.md](docs/figures.md) — figure catalog (organized under
 `figures/{contracts,cap,value}/`); [docs/rules.md](docs/rules.md) — league cap
 rules; [docs/analysis_plan.md](docs/analysis_plan.md) — the ML roadmap.
 
