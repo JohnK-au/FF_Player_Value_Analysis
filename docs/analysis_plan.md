@@ -147,13 +147,14 @@ the model only sees his 11 PPG year); the replacement baseline isn't risk-adjust
 ## Immediate next steps (when we resume)
 An approved plan to build per-player context + projection + dynasty value + a Streamlit
 app is **in progress on branch `value-engine-projection-app`** (M1 data dictionary, S1 team
-context, the pricing fix, S2 per-player context, S3 next-season projection, **and S4
-projection-based + dynasty value** done & pushed; master `player_value_2026.csv` cached).
-Next, in priority order:
-1. **Streamlit app**: market/driver explorer (relationship + ranking + what-if + over-pay
-   map), over/under board, value card, roster view (drop/extend/tag/keep), auction bid
-   targets, trade evaluator.
-2. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
+context, pricing fix, S2 per-player context, S3 next-season projection, S4 projection-based
++ dynasty value, **and M5 Streamlit app core (Home board + Player Card + Market/Driver
+Explorer)** done & pushed). Next, in priority order:
+1. **M6 — Streamlit extensions**: roster view (team toggle + drop/extend/tag/keep recs),
+   auction bid targets (FA pool, max-fair-bid given cap space + roster needs), trade
+   evaluator (input players each side → value & cap delta, current + dynasty).
+2. **Roster optimization** (Phase E): integer-cap-constrained keep/cut/tag/extend/trade
+   recommender beyond the heuristic in the app.
 
 ## Open questions for later
 - Exact advanced-metric set to prioritize per position.

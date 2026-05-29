@@ -119,6 +119,8 @@ python -m src.data.population # build all-NFL-skill-players × 2022-2025 trainin
 python -m src.data.context   # per-player baseline/delta/z + year_type (down/up/par diagnostic)
 python -m src.models.production # production model (exp PPG, OOF R²) + replacement levels/VOR
 python -m src.models.projection # next-season PPG projection (OOF R² 0.48) + age curves -> projected_production_2026.csv
+
+streamlit run src/app/Home.py    # launch the interactive app (board + Player Card + Market/Driver Explorer)
 python -m src.models.value   # both-lens fair value (production-anchored + market-fit) + over/under lists
 python -m src.viz.value      # faceted value scatter (salary vs PPG; figures/value_facets_*.png)
 python -m src.viz.value_interactive # interactive hover scatter -> figures/value_interactive.html
@@ -184,7 +186,12 @@ rebound recognized; positional age curves for the dynasty extension); **S4 proje
 + dynasty value** (`projected_value_table` swaps `projected_ppg` in as the value basis →
 Jefferson surplus +132→−2, Hockenson +112→−2; `dynasty_value_table` discounts multi-year
 projected fair across `years_2026` at 0.10/yr; consolidated `data/processed/player_value_2026.csv`
-is the master table the Streamlit app will read). Preliminary summary figure.
+is the master table the Streamlit app reads); **M5 Streamlit app core** (`src/app/`:
+`Home.py` over/under board with horizon toggle + filters + summary metrics + colored
+surplus styling; `pages/1_Player_Card.py` per-player deep-dive with multi-year projection
+chart + context block + both lenses; `pages/2_Market_Driver.py` with 4 tabs — Driver
+Ranking, Relationship Explorer, What-if Simulator, Over-pay Map — all position-selectable).
+Preliminary summary figure.
 
 **Key design decision (2026-05-27):** fair value is **anchored to objective
 production (VOR), not fit to actual salaries.** A `salary ~ features` model learns
@@ -212,10 +219,12 @@ sub-baseline 84%→34%, AJ Brown overpaid by 144 (fair 56), Jefferson by 132 (fa
 remaining single-season distortions (Jefferson's down 2025) are what the projection (S2–S4) fixes.
 
 **Immediate next steps when resuming (priority order):**
-1. **Streamlit app** (M5–M6): market/driver explorer (relationship + ranking + what-if +
-   over-pay map, all positions), over/under board, player value card (search → card with
-   year-by-year projected PPG), roster view + drop/extend/tag/keep recs, auction bid
-   targets, trade evaluator.
+1. **M6 — Streamlit app extensions**: roster view with team toggle + drop/extend/tag/keep
+   recommendations under the cap; auction bid targets (free agents, max-fair-bid given
+   cap space + needs); trade evaluator (input players each side → value + cap delta,
+   current + dynasty).
+2. **Roster optimization** (Phase E): integer-cap-constrained keep/cut/tag/extend/trade
+   recommender beyond the heuristic in the app.
 
 Minor open items: trade reconciliation (active roster lags trades; Extensions tab
 is authoritative); a couple of league-rule unknowns (extension salary-setting,
