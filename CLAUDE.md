@@ -186,12 +186,14 @@ rebound recognized; positional age curves for the dynasty extension); **S4 proje
 + dynasty value** (`projected_value_table` swaps `projected_ppg` in as the value basis →
 Jefferson surplus +132→−2, Hockenson +112→−2; `dynasty_value_table` discounts multi-year
 projected fair across `years_2026` at 0.10/yr; consolidated `data/processed/player_value_2026.csv`
-is the master table the Streamlit app reads); **M5 Streamlit app core** (`src/app/`:
-`Home.py` over/under board with horizon toggle + filters + summary metrics + colored
-surplus styling; `pages/1_Player_Card.py` per-player deep-dive with multi-year projection
-chart + context block + both lenses; `pages/2_Market_Driver.py` with 4 tabs — Driver
-Ranking, Relationship Explorer, What-if Simulator, Over-pay Map — all position-selectable).
-Preliminary summary figure.
+is the master table the Streamlit app reads); **M5 Streamlit app core + M6 extensions** (`src/app/`:
+`Home.py` over/under board with horizon toggle + filters + colored surplus styling;
+`pages/1_Player_Card.py` per-player deep-dive with multi-year projection chart + context;
+`pages/2_Market_Driver.py` 4 tabs — Driver Ranking, Relationship Explorer, What-if Simulator,
+Over-pay Map; `pages/3_Roster.py` team selector + cap summary + drop/extend/tag/keep
+recommendations encoding rules §6–§9; `pages/4_Auction.py` FA pool ranked by `max_fair_bid`
+with per-position tabs; `pages/5_Trade.py` two-sided trade evaluator with net current +
+dynasty value/cap deltas). Preliminary summary figure.
 
 **Key design decision (2026-05-27):** fair value is **anchored to objective
 production (VOR), not fit to actual salaries.** A `salary ~ features` model learns
@@ -219,12 +221,16 @@ sub-baseline 84%→34%, AJ Brown overpaid by 144 (fair 56), Jefferson by 132 (fa
 remaining single-season distortions (Jefferson's down 2025) are what the projection (S2–S4) fixes.
 
 **Immediate next steps when resuming (priority order):**
-1. **M6 — Streamlit app extensions**: roster view with team toggle + drop/extend/tag/keep
-   recommendations under the cap; auction bid targets (free agents, max-fair-bid given
-   cap space + needs); trade evaluator (input players each side → value + cap delta,
-   current + dynasty).
-2. **Roster optimization** (Phase E): integer-cap-constrained keep/cut/tag/extend/trade
-   recommender beyond the heuristic in the app.
+1. **Use it and iterate.** All milestones (M1–M6) of the approved plan are done; the
+   `value-engine-projection-app` branch is ready to merge to main. Open `streamlit run
+   src/app/Home.py`, explore real decisions, and feed back which signals are good vs
+   misleading.
+2. **Phase E — Roster optimization** (later): integer-cap-constrained keep/cut/tag/extend/
+   trade recommender beyond the heuristic on the Roster page.
+3. **Refinements as warranted**: more historical seasons (extend beyond 2022–25 to stabilize
+   projection + age curves); reconstruct weekly skill scoring from nflverse so the FA pool
+   gets a real consistency factor; tune `RISK_LAMBDA`/`DEEP_FACTOR`/`DISCOUNT_RATE` from
+   real usage; trade reconciliation (active roster still lags trades).
 
 Minor open items: trade reconciliation (active roster lags trades; Extensions tab
 is authoritative); a couple of league-rule unknowns (extension salary-setting,

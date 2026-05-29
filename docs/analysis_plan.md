@@ -145,16 +145,18 @@ the model only sees his 11 PPG year); the replacement baseline isn't risk-adjust
 - Combine fair-value + the cap ledger to recommend keep / cut / tag / extend / trade moves that maximize value under the 1500 cap.
 
 ## Immediate next steps (when we resume)
-An approved plan to build per-player context + projection + dynasty value + a Streamlit
-app is **in progress on branch `value-engine-projection-app`** (M1 data dictionary, S1 team
-context, pricing fix, S2 per-player context, S3 next-season projection, S4 projection-based
-+ dynasty value, **and M5 Streamlit app core (Home board + Player Card + Market/Driver
-Explorer)** done & pushed). Next, in priority order:
-1. **M6 — Streamlit extensions**: roster view (team toggle + drop/extend/tag/keep recs),
-   auction bid targets (FA pool, max-fair-bid given cap space + roster needs), trade
-   evaluator (input players each side → value & cap delta, current + dynasty).
-2. **Roster optimization** (Phase E): integer-cap-constrained keep/cut/tag/extend/trade
-   recommender beyond the heuristic in the app.
+All milestones of the approved plan are **done & pushed** on branch
+`value-engine-projection-app`: M1 data dictionary, S1 team context, pricing fix, S2
+per-player context, S3 next-season projection, S4 projection-based + dynasty value,
+M5 Streamlit core (board + Player Card + Market/Driver Explorer), **M6 Streamlit extensions
+(Roster + Auction Bid Targets + Trade Evaluator)**. Next, in priority order:
+1. **Use it and iterate.** Open `streamlit run src/app/Home.py`, explore real decisions,
+   feed back which signals are good vs misleading.
+2. **Phase E — Roster optimization** (later): integer-cap-constrained keep/cut/tag/extend/
+   trade recommender beyond the heuristic on the Roster page.
+3. **Refinements**: more historical seasons; reconstruct weekly skill scoring from nflverse
+   so FAs get a real consistency factor; tune `RISK_LAMBDA`/`DEEP_FACTOR`/`DISCOUNT_RATE`
+   from real usage; trade reconciliation.
 
 ## Open questions for later
 - Exact advanced-metric set to prioritize per position.

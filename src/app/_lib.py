@@ -68,6 +68,55 @@ def model_permutation_importance() -> pd.DataFrame:
     )
 
 
+@st.cache_data(show_spinner="Computing FA pool projected values...")
+def load_fa_pool() -> tuple[pd.DataFrame, float]:
+    """The free-agent pool (NFL skill players NOT under league contract) with
+    projected fair values (max fair bid)."""
+    from src.config import PROCESSED_DIR
+    from src.models.value import DEEP_FACTOR, projected_value_table
+
+    proj = pd.read_csv(PROCESSED_DIR / "projected_production_2026.csv")
+    master = load_master()
+    rostered_ids = set(master["espn_id"].dropna().astype(int).tolist())
+    fa = proj[~proj["espn_id"].astype(int).isin(rostered_ids)].copy()
+
+    # Use the same rate + deep baselines the value engine derived for our roster.
+    _, rate, repl = projected_value_table(2026)
+    deep_bl = {pos: DEEP_FACTOR * v for pos, v in repl.items()}
+    # FAs have no downside data → no volatility penalty (consistency_factor = 1).
+    fa["consistency_factor"] = 1.0
+    fa["prod_adj"] = fa["projected_ppg"]
+    fa["deep_baseline"] = fa["position_group"].map(deep_bl)
+    fa["deep_vor"] = (fa["prod_adj"] - fa["deep_baseline"]).clip(lower=0)
+    fa["max_fair_bid"] = (fa["deep_vor"] * rate).round(1)
+    fa = fa[fa["max_fair_bid"] > 0].sort_values("max_fair_bid", ascending=False).reset_index(drop=True)
+    return fa, float(rate)
+
+
+def recommend_action(row: pd.Series) -> str:
+    """Heuristic drop / extend / tag / keep recommendation per player.
+
+    Encodes the league's actionable decisions (rules §6–§9): a player in his final
+    year (years_2026 == 1) with elite production is a TAG candidate; a player in the
+    year before his final year (years_2026 == 2) with significant under-payment is
+    an EXTEND candidate; an overpaid player with real salary is a DROP candidate;
+    everyone else KEEP.
+    """
+    if pd.isna(row.get("surplus_2026")):
+        return "—"
+    surplus = float(row["surplus_2026"])
+    years = int(row.get("years_2026") or 0)
+    salary = float(row.get("salary_2026") or 0)
+    value = float(row.get("value_2026") or 0)
+    if salary >= 50 and surplus > 50:
+        return "DROP"
+    if years == 1 and surplus < -30 and value > 50:
+        return "TAG"
+    if years == 2 and surplus < -30:
+        return "EXTEND"
+    return "KEEP"
+
+
 def style_surplus(df: pd.DataFrame, col: str):
     """Style a surplus column: red for positive (overpaid), green for negative (bargain)."""
     def _color(v):
