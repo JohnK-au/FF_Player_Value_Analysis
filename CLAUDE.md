@@ -171,7 +171,9 @@ a next-season **projection** model + age curves, **dynasty** value, and an inter
 **Streamlit** app (open-source/free; current AND dynasty value side by side; market views =
 relationship explorer + driver ranking + what-if simulator + over-pay map, all positions).
 Work is on branch **`value-engine-projection-app`** (pushed). Done on it: M1 data dictionary +
-PPG policy ([[ppg-basis-policy]]); S1 team/offense context; preliminary summary figure.
+PPG policy ([[ppg-basis-policy]]); S1 team/offense context; **production-pricing fix**
+(deep-baseline + multiplicative consistency factor — replaces the degenerate $1-floor scheme,
+top fair 1,090→291, sub-baseline 84%→34%); preliminary summary figure.
 
 **Key design decision (2026-05-27):** fair value is **anchored to objective
 production (VOR), not fit to actual salaries.** A `salary ~ features` model learns
@@ -189,29 +191,23 @@ consistency**: `vor_adj = vor − 0.5·downside_deviation` (`value.RISK_LAMBDA`)
 penalizing *bust* weeks (floor risk in a weekly H2H league) but **not** big ceiling
 weeks — boom weeks must not hurt elite RBs like Gibbs/Bijan (user-confirmed).
 
-**⚠️ Known issue to fix FIRST — production-lens pricing is degenerate** (found 2026-05-27,
-see [[value-pricing-degenerate-fix]]). With the current VOR→$ scheme, **130/155 (84%) of
-players floor to `prod_fair=1`** and only 25 (positive risk-adjusted VOR) absorb the whole
-~7,500-unit cap pool (Puka ≈ 1,090). Root causes: (1) 8-team leagues have high replacement
-levels — **67% of rostered skill players are ≤ replacement** *before* any risk adj; (2) the
-consistency penalty is too harsh & **asymmetric** (`vor − 0.5·downside` only on the player,
-not the replacement → flips startable players like AJ Brown negative); (3) linear
-redistribution + a **$1 floor** over-concentrates. This is a *pricing-design* flaw, not just
-incompleteness: the top ~25 ranking is meaningful but the 84% floored tier is not. (Earlier
-"trust the ranking" advice does **not** hold for the floored tier.)
+**✅ Pricing fix (2026-05-27, see [[value-pricing-degenerate-fix]]):** the prior subtractive
+risk penalty + $1 floor (84% of players floored to `prod_fair=1`, Puka ≈ 1,090) was replaced
+with (a) a **multiplicative consistency factor** bounded in `[0.5, 1]` (volatile-but-startable
+players are penalized but never zeroed) and (b) **deep-baseline pricing**: redistribute the cap
+pool over `deep_vor = prod_adj − 0.5·replacement[pos]`. Sub-baseline players now get
+`prod_fair = 0` (their salary registers as surplus). Result: rate 87→15, top fair 1,090→291,
+sub-baseline 84%→34%, AJ Brown overpaid by 144 (fair 56), Jefferson by 132 (fair 18). The
+remaining single-season distortions (Jefferson's down 2025) are what the projection (S2–S4) fixes.
 
 **Immediate next steps when resuming (priority order):**
-1. **Fix production-lens pricing** *(do first — see the Known issue above)*: replace the $1
-   floor with a realistic baseline (price points above a *deep* baseline, or a per-roster-spot
-   floor then redistribute the surplus); make the risk penalty gentler & symmetric (discount
-   replacement for volatility too, or cap it); bound/compress concentration so no player ≈ 1,090.
-2. **S2 — per-player context** ([context.py] new): baseline/delta/z + `year_type` (down/up/par),
+1. **S2 — per-player context** ([context.py] new): baseline/delta/z + `year_type` (down/up/par),
    no-leakage `shift(1).rolling`; diagnostics now + features for the projection.
-3. **S3 — next-season projection** ([projection.py] new) + age curves → fixes single-season
+2. **S3 — next-season projection** ([projection.py] new) + age curves → fixes single-season
    distortions (Jefferson/AJ Brown down years); enables dynasty value.
-4. **S4 — value off projected production** (current + **dynasty** via `years_2026`) +
+3. **S4 — value off projected production** (current + **dynasty** via `years_2026`) +
    consolidated `player_value_2026.csv`.
-5. **Streamlit app** (M5–M6): market/driver explorer, over/under board, player value card,
+4. **Streamlit app** (M5–M6): market/driver explorer, over/under board, player value card,
    roster view + drop/extend/tag/keep, auction bid targets, trade evaluator.
 
 Minor open items: trade reconciliation (active roster lags trades; Extensions tab

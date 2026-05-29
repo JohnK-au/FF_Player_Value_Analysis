@@ -41,10 +41,17 @@ CAT_FEATURES = ["position_group"]
 BASE_NUM = ["age", "ppg_2025", "ppg_2024", "games_2025", "stdev_2025", "years_exp"]
 NUM_FEATURES = BASE_NUM + ADV_NUM + DRAFT_NUM + COMBINE_NUM  # full set (viz imports this)
 
-# Consistency penalty for the production lens: value a player at mean − λ·(weekly
-# stdev), so steady scorers outrank boom-bust ones with the same mean (this is a
-# weekly head-to-head league). λ=0 → pure mean; ~1 ≈ a one-stdev "floor". Tunable.
+# Consistency factor: scale a player's value down by RELATIVE downside (volatility/mean)
+# as a bounded multiplicative factor in [MIN_CONSISTENCY_FACTOR, 1.0]. Volatile-but-startable
+# players are penalized but never zeroed out — no asymmetric subtraction.
 RISK_LAMBDA = 0.5
+MIN_CONSISTENCY_FACTOR = 0.5
+
+# Deep-baseline pricing: redistribute spend over value above a DEEPER baseline than the
+# starter replacement (a fraction of it), so most rostered players have positive fair
+# value. Replaces an earlier degenerate scheme that floored ~84% of rostered players to
+# fair=$1 with a single player absorbing nearly the whole cap pool.
+DEEP_FACTOR = 0.5
 
 
 def _prepare(df: pd.DataFrame) -> pd.DataFrame:
@@ -85,26 +92,32 @@ def fair_value_table(num_features: list[str] | None = None) -> tuple[pd.DataFram
 
 # --- Lens 1: production-anchored value (the one to trust) ---------------------
 def production_value_table(
-    season: int = 2025, risk_lambda: float = RISK_LAMBDA
+    season: int = 2025,
+    risk_lambda: float = RISK_LAMBDA,
+    deep_factor: float = DEEP_FACTOR,
 ) -> tuple[pd.DataFrame, float, dict]:
-    """Our 2026 contract skill players priced by (risk-adjusted) value-over-replacement.
+    """Our 2026 contract skill players priced by production-anchored fair value.
 
-    ``prod_fair`` redistributes the league's *total* skill-position cap spend
-    across players in proportion to their positive VOR — answering "given what the
-    league spends in total on skill players, how SHOULD it be allocated by on-field
-    value?" rather than reproducing the market's actual prices. ``surplus_prod =
-    actual − prod_fair`` (+ overpaid / − bargain) then flags mispricing against
-    production, catching even league-wide systematic bias.
+    Pricing recipe (replaces an earlier degenerate scheme — subtractive risk penalty
+    + $1 floor — that floored ~84% of rostered players and concentrated nearly the
+    whole cap pool on one player):
 
-    VOR is **risk-adjusted** (``vor_adj = vor − risk_lambda · downside``): in a weekly
-    head-to-head league a steady scorer is worth more than a boom-bust one with the
-    same mean. The penalty uses **downside deviation** (shortfalls below a player's
-    own average — bust weeks lose matchups), not symmetric stdev, so big ceiling
-    weeks aren't punished. ``downside`` is from the 13-week box scores (rostered
-    players); players without it take no penalty.
+    1. **Consistency factor** (bounded, multiplicative): ``prod_adj = ppg_full ×
+       max(MIN_CONSISTENCY_FACTOR, 1 − risk_lambda · downside/ppg_full)``. A
+       volatile-but-startable player is penalized but never zeroed (``downside`` =
+       RMS of weekly shortfalls below the player's own mean, from the 13-week box
+       scores). Players without weekly data take factor 1.0.
+    2. **Deep baseline** per position: ``deep_baseline = deep_factor × starter
+       replacement`` PPG. Most rostered players have positive ``deep_vor =
+       prod_adj − deep_baseline``.
+    3. **Fair value** redistributes the league's total skill-cap spend in proportion
+       to each player's positive ``deep_vor``. ``surplus_prod = salary − prod_fair``
+       flags over/under-payment. Sub-baseline players get ``prod_fair = 0`` (the whole
+       salary registers as surplus / overpaid).
 
-    VOR uses full-season PPG (the only NFL-wide, position-comparable basis), so it
-    differs slightly from the 13-week ``ppg_2025`` the market-fit model uses.
+    Kept as diagnostics (not used for pricing): ``vor``/``vor_adj`` (starter-VOR view),
+    ``replacement`` (starter PPG threshold). PPG basis = full-season (the only NFL-wide,
+    position-comparable measure).
     """
     from ..data.dataset import build_player_dataset
 
@@ -118,17 +131,27 @@ def production_value_table(
 
     keep = vor[["espn_id", "ppg", "replacement", "vor"]].rename(columns={"ppg": "ppg_full"})
     m = base.merge(keep, on="espn_id", how="left")
-
-    # Consistency penalty: mark down floor risk via downside deviation (points/game,
-    # comparable to PPG). No in-league weekly data → no penalty.
     m = m.merge(weekly_consistency(season), on="espn_id", how="left")
+
+    # Consistency: bounded multiplicative factor on relative downside (volatility/mean).
+    rel = (risk_lambda * m["downside"] / m["ppg_full"]).fillna(0.0)
+    m["consistency_factor"] = (1 - rel).clip(lower=MIN_CONSISTENCY_FACTOR, upper=1.0).round(3)
+    m["prod_adj"] = (m["ppg_full"] * m["consistency_factor"]).round(2)
+    # Legacy starter-VOR diagnostics (not used for pricing, retained for reporting).
     m["vor_adj"] = (m["vor"] - risk_lambda * m["downside"].fillna(0.0)).round(2)
 
-    priced = m[m["vor"].notna()]
-    rate = priced["salary_2026"].sum() / priced["vor_adj"].clip(lower=0).sum()
-    m["prod_fair"] = (m["vor_adj"].clip(lower=0) * rate).round(1).clip(lower=1)
+    # Deep baseline per position (fraction of starter replacement) → deep VOR.
+    deep_bl = {pos: round(deep_factor * v, 2) for pos, v in repl.items()}
+    m["deep_baseline"] = m["position_group"].map(deep_bl)
+    m["deep_vor"] = (m["prod_adj"] - m["deep_baseline"]).round(2).clip(lower=0)
+
+    priced_pool = m[m["prod_adj"].notna() & (m["deep_vor"] > 0)]
+    total_spend = m.loc[m["prod_adj"].notna(), "salary_2026"].sum()
+    pool_vor = priced_pool["deep_vor"].sum()
+    rate = float(total_spend / pool_vor) if pool_vor > 0 else 0.0
+    m["prod_fair"] = (m["deep_vor"] * rate).round(1)
     m["surplus_prod"] = (m["salary_2026"] - m["prod_fair"]).round(1)
-    return m, float(rate), repl
+    return m, rate, repl
 
 
 def combined_value_table(
@@ -150,25 +173,26 @@ if __name__ == "__main__":
     tbl, rate, repl = combined_value_table()
     priced = tbl[tbl["prod_fair"].notna()]
     cols = ["player", "team", "position_group", "salary_2026", "ppg_full", "downside",
-            "vor", "vor_adj", "prod_fair", "surplus_prod"]
+            "consistency_factor", "prod_adj", "deep_vor", "prod_fair", "surplus_prod"]
 
     print("=== PRODUCTION-ANCHORED fair value (PRIMARY lens) ===")
-    print(f"Replacement PPG by position: "
+    print(f"Starter replacement PPG: "
           + ", ".join(f"{p} {v:.1f}" for p, v in repl.items())
-          + f"  |  consistency penalty lambda={RISK_LAMBDA} x weekly downside deviation")
-    print(f"League rate: {rate:.2f} cap units per risk-adjusted VOR point — "
-          f"redistributes {priced['salary_2026'].sum():.0f} skill-cap units across "
-          f"{len(priced)} producing players.\n")
+          + f"  |  deep baseline = {DEEP_FACTOR} x replacement (pricing floor)")
+    floored = int((priced["prod_fair"] == 0).sum())
+    print(f"League rate: {rate:.2f} cap units per deep-VOR point  |  "
+          f"{floored} of {len(priced)} priced players sub-baseline (prod_fair=0)\n")
     print("Most UNDER-valued by production (bargains):")
     print(priced.nsmallest(10, "surplus_prod")[cols].to_string(index=False))
     print("\nMost OVER-valued by production:")
     print(priced.nlargest(10, "surplus_prod")[cols].to_string(index=False))
 
-    movers = priced[priced["downside"].notna()].copy()
-    movers["markdown"] = (RISK_LAMBDA * movers["downside"]).round(1)
-    print("\nBiggest consistency markdowns (worst floor risk — lambda*downside shaved off VOR):")
-    print(movers.nlargest(8, "markdown")[
-        ["player", "team", "position_group", "ppg_full", "downside", "stdev", "markdown", "vor", "vor_adj"]
+    movers = priced[priced["downside"].notna() & (priced["ppg_full"] > 0)].copy()
+    movers["markdown_ppg"] = (movers["ppg_full"] - movers["prod_adj"]).round(2)
+    print("\nBiggest consistency markdowns (highest relative downside — PPG shaved off):")
+    print(movers.nlargest(8, "markdown_ppg")[
+        ["player", "team", "position_group", "ppg_full", "downside",
+         "consistency_factor", "markdown_ppg", "prod_adj"]
     ].to_string(index=False))
 
     # Lens 2 diagnostic: how reproducible is the market's own pricing? (not maximized)

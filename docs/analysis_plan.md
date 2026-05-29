@@ -89,18 +89,21 @@ engine now has **two lenses** (`src/models/value.py`):
   `team_rush_epa`/`team_pass_rate`, from the same pbp) → production R² 0.80→0.81, market lens
   +adv 0.37→0.42.
 
-**⚠️ Known issue — production-lens pricing is degenerate (fix FIRST, found 2026-05-27).**
-The VOR→$ scheme floors **130/155 (84%) of players to `prod_fair=1`**; only 25 (positive
-risk-adjusted VOR) absorb the whole ~7,500-unit pool (Puka ≈ 1,090). Causes: 8-team high
-replacement (67% ≤ replacement pre-risk); the consistency penalty is too harsh & **asymmetric**
-(`vor − 0.5·downside` only on the player, not the replacement → AJ Brown flipped negative);
-linear redistribution + a **$1 floor** over-concentrate. **Fix:** realistic baseline instead of
-the $1 floor (price above a *deep* baseline, or a per-roster-spot floor + redistribute the
-surplus); gentler/symmetric risk penalty; bound/compress concentration.
+- ✅ **Pricing degeneracy fixed (2026-05-27).** The earlier subtractive risk penalty + $1
+  floor floored 130/155 (84%) players to `prod_fair = 1` while Puka absorbed ~1,090. Replaced
+  with two changes (see `production_value_table` docstring and `data_dictionary.md` glossary):
+  - **Multiplicative consistency factor** (bounded in `[MIN_CONSISTENCY_FACTOR, 1.0]`):
+    `prod_adj = ppg_full × max(0.5, 1 − λ · downside / ppg_full)` — volatile-but-startable
+    players are penalized but never zeroed.
+  - **Deep-baseline pricing**: `deep_baseline = DEEP_FACTOR × starter replacement` (default 0.5).
+    `prod_fair` redistributes the cap pool over positive `deep_vor = prod_adj − deep_baseline`;
+    sub-baseline players get `prod_fair = 0` (their salary registers as surplus).
+  - Results: rate 87→15, top fair 1,090→291, sub-baseline 84%→34%, AJ Brown overpaid by
+    144 (fair 56, not 1), Jefferson by 132 (fair 18, not 1).
 
-**Other limitations (the projection work addresses these):** values use *single-season* (2025)
-production, so down/injury years distort (e.g. Jefferson); the replacement baseline isn't
-risk-adjusted.
+**Remaining limitations (Phase D/projection fixes these):** values still use *single-season*
+(2025) production, so down/injury years distort (e.g. Jefferson still reads overpaid because
+the model only sees his 11 PPG year); the replacement baseline isn't risk-adjusted.
 
 ### Phase D — Performance projection & risk (value second)
 - Project future PPG over contract years using **age curves by position** (fit on historical nflverse data) + recent performance + advanced metrics. Feeds dynasty value.
@@ -121,17 +124,16 @@ risk-adjusted.
 
 ## Immediate next steps (when we resume)
 An approved plan to build per-player context + projection + dynasty value + a Streamlit
-app is **in progress on branch `value-engine-projection-app`** (M1 data dictionary + S1 team
-context done & pushed). Next, in priority order:
-1. **Fix production-lens pricing (FIRST)** — see the Known issue above: realistic baseline
-   instead of the $1 floor; gentler/symmetric risk penalty; bound/compress concentration.
-2. **Per-player context** (`src/data/context.py`): baseline/delta/z + `year_type` (down/up/par),
-   no-leakage `shift(1).rolling`.
-3. **Next-season projection** (`src/models/projection.py`) + age curves; then **dynasty value**
-   (current + multi-year via `years_2026`) — fixes single-season distortions (Jefferson/AJ Brown).
-4. **Streamlit app**: market/driver explorer, over/under board, value card, roster view
+app is **in progress on branch `value-engine-projection-app`** (M1 data dictionary, S1 team
+context, and the pricing fix done & pushed). Next, in priority order:
+1. **Per-player context** (`src/data/context.py`): baseline/delta/z + `year_type` (down/up/par),
+   no-leakage `shift(1).rolling`. Diagnostics now + features for the projection.
+2. **Next-season projection** (`src/models/projection.py`) + age curves; then **dynasty value**
+   (current + multi-year via `years_2026`) — fixes the single-season distortions still present
+   (Jefferson/AJ Brown reading overpaid off their 2025 down years).
+3. **Streamlit app**: market/driver explorer, over/under board, value card, roster view
    (drop/extend/tag/keep), auction bid targets, trade evaluator.
-5. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
+4. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
 
 ## Open questions for later
 - Exact advanced-metric set to prioritize per position.

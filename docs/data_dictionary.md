@@ -98,17 +98,36 @@ Both are per-game. See the [PPG policy](#ppg-basis-policy).
 - **team_rush_epa** — mean EPA per rush for the team.
 
 ### Derived value-model stats (the model layer)
-- **VOR** — Value Over Replacement: a player's PPG minus the **replacement level** at their position
-  (`models/production.py`).
-- **replacement level** — PPG of the worst startable player at a position, from filling all 8 teams'
-  starting lineups (rules §4) over the player pool.
+
+**Diagnostics** — the starter-VOR view, retained for reporting but not used to set salary:
+- **VOR** — Value Over Replacement: a player's PPG minus the **starter replacement** at their
+  position (`models/production.py`).
+- **replacement level** — PPG of the worst startable player at a position, from filling all 8
+  teams' starting lineups (rules §4) over the full NFL pool.
 - **downside deviation** — RMS of weekly shortfalls *below a player's own average* (floor risk);
-  used to risk-adjust VOR (`vor_adj = vor − λ·downside`, λ = `value.RISK_LAMBDA`). *Derived.*
-- **redistribution rate** — cap units per VOR point: total skill-cap spend ÷ total positive VOR.
-- **prod_fair / surplus_prod** — production-anchored fair value & surplus (`= actual − prod_fair`).
-- **market_fair / surplus_market** — market-fit model's predicted salary & surplus (secondary lens).
+  computed from the 13-week box scores (rostered players only). *Derived.*
+- **vor_adj** *(legacy)* — `vor − λ·downside`. Retained as a diagnostic only; **no longer used
+  for pricing** (the subtractive form flipped startable-but-volatile players negative).
+
+**Production-lens pricing recipe** (`models/value.py`, `production_value_table`): a multiplicative,
+bounded risk adjustment + a deep-bench baseline + redistribute the actual cap pool over positive
+value-above-baseline. Designed to avoid the earlier $1-floor degeneracy.
+- **consistency_factor** — `max(MIN_CONSISTENCY_FACTOR, 1 − λ · downside / ppg_full)`, bounded in
+  [0.5, 1.0]. A volatile-but-startable player is penalized but never zeroed. λ = `value.RISK_LAMBDA`.
+- **prod_adj** — `ppg_full × consistency_factor`. The risk-adjusted PPG used for pricing.
+- **deep_baseline** — `value.DEEP_FACTOR × replacement[pos]` per position (default 0.5). A
+  deep-bench tier; below this, no value is assigned.
+- **deep_vor** — `max(0, prod_adj − deep_baseline)`. Production above the deep baseline (what
+  gets priced).
+- **redistribution rate** — `total skill cap spend / sum(deep_vor across priced players)` =
+  cap units per deep-VOR point.
+- **prod_fair / surplus_prod** — production-anchored fair value (`deep_vor × rate`) and surplus
+  (`= salary − prod_fair`). Sub-baseline players get `prod_fair = 0`; their salary registers as
+  surplus (overpaid).
+- **market_fair / surplus_market** — secondary "market price" lens: HistGradientBoosting fit of
+  `salary ~ features`. R² is a *diagnostic we deliberately do not maximize*.
 - **expected_ppg** — production model's same-season PPG estimate (`models/production.py`).
-- **projected PPG** — next-season / multi-year PPG from the projection model (`models/projection.py`).
+- **projected PPG** *(future, S2–S4)* — next-season / multi-year PPG from the projection model.
 
 *(Newer context/projection columns — `{metric}_baseline/_delta/_z`, `year_type`, dynasty value —
 are documented as they land; see [analysis_plan.md](analysis_plan.md).)*
