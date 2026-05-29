@@ -11,6 +11,7 @@ pyarrow           # Parquet read/write for cached finalized-season tables
 matplotlib        # visualizations
 plotly            # interactive (hover) visualizations
 scikit-learn      # fair-value model
+streamlit         # interactive app (local dashboard) — src/app/
 
 # Planned — uncomment as features land
 # jupyter

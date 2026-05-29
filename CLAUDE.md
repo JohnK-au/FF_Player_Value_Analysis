@@ -14,7 +14,8 @@ fuller pitch.
 
 **Docs:** [docs/architecture.md](docs/architecture.md) — codebase layering & where
 features land; [docs/data_sources.md](docs/data_sources.md) — data-scraping
-reference; [docs/figures.md](docs/figures.md) — figure catalog (organized under
+reference; [docs/data_dictionary.md](docs/data_dictionary.md) — data assets, scope,
+& stat/acronym glossary; [docs/figures.md](docs/figures.md) — figure catalog (organized under
 `figures/{contracts,cap,value}/`); [docs/rules.md](docs/rules.md) — league cap
 rules; [docs/analysis_plan.md](docs/analysis_plan.md) — the ML roadmap.
 
@@ -115,7 +116,11 @@ python -m src.data.players   # build contract<->ESPN crosswalk (positions, espn_
 python -m src.data.performance # cache season + weekly (wk1-13) points 2022-2025
 python -m src.data.dataset   # build unified 2026 player dataset + efficiency teaser
 python -m src.data.population # build all-NFL-skill-players × 2022-2025 training frame
+python -m src.data.context   # per-player baseline/delta/z + year_type (down/up/par diagnostic)
 python -m src.models.production # production model (exp PPG, OOF R²) + replacement levels/VOR
+python -m src.models.projection # next-season PPG projection (OOF R² 0.48) + age curves -> projected_production_2026.csv
+
+streamlit run src/app/Home.py    # launch the interactive app (board + Player Card + Market/Driver Explorer)
 python -m src.models.value   # both-lens fair value (production-anchored + market-fit) + over/under lists
 python -m src.viz.value      # faceted value scatter (salary vs PPG; figures/value_facets_*.png)
 python -m src.viz.value_interactive # interactive hover scatter -> figures/value_interactive.html
@@ -155,13 +160,40 @@ Team nicknames in the sheet are `Nate, Seeb, Silv, Kerr, Will, Drew, Couc, Haft`
 ## Next steps
 
 **Done so far:** contract/cap parsing + reconciliation; figures (contracts, cap,
-salary-by-position, value scatters static+interactive); contract↔ESPN player join;
-ages; ESPN performance (season + weekly wk1–13); the 19 advanced metrics
-(pbp/NGS/PFR/snaps) + draft capital + combine (cached to Parquet); the **expanded
+salary-by-position, value scatters + a preliminary [value_summary_2026](src/viz/summary.py));
+contract↔ESPN player join; ages; ESPN performance (season + weekly wk1–13); advanced
+metrics (pbp/NGS/PFR/snaps) + **team/offense efficiency context** (`team_pass_epa`/`team_cpoe`/
+`team_rush_epa`/`team_pass_rate`) + draft + combine (cached to Parquet); the **expanded
 training set** (all NFL skill players × 2022–2025 = 2,659 rows, [population.py](src/data/population.py));
-a **production model** (expected PPG, OOF **R² 0.80**, [production.py](src/models/production.py));
-and a **two-lens fair-value engine** ([value.py](src/models/value.py)). Full roadmap
-in [docs/analysis_plan.md](docs/analysis_plan.md).
+a **production model** (expected PPG, OOF **R² 0.81**, [production.py](src/models/production.py));
+a **two-lens fair-value engine** ([value.py](src/models/value.py)); and a
+[data dictionary](docs/data_dictionary.md). Full roadmap in [docs/analysis_plan.md](docs/analysis_plan.md).
+
+**Current build (in progress):** an approved plan (saved at
+`~/.claude/plans/ok-i-am-entering-curious-map.md`) to add per-player context (down/up/par),
+a next-season **projection** model + age curves, **dynasty** value, and an interactive
+**Streamlit** app (open-source/free; current AND dynasty value side by side; market views =
+relationship explorer + driver ranking + what-if simulator + over-pay map, all positions).
+Work is on branch **`value-engine-projection-app`** (pushed). Done on it: M1 data dictionary +
+PPG policy ([[ppg-basis-policy]]); S1 team/offense context; **production-pricing fix**
+(deep-baseline + multiplicative consistency factor — top fair 1,090→291, sub-baseline 84%→34%);
+**S2 per-player longitudinal context** (`src/data/context.py`: prior/baseline/delta/z + a
+`year_type` ∈ `{up, par, down, rookie, partial}` glance flag, no-leakage `shift(1).rolling`;
+Jefferson 2025 = `down` + usage intact + results crashed + bad QB context = the rebound signature
+we wanted, identified automatically); **S3 next-season projection model** (`src/models/projection.py`:
+OOF R² 0.48 on 1,167 transition pairs, NFL-wide projected PPG cached; Jefferson 11.1→17.85
+rebound recognized; positional age curves for the dynasty extension); **S4 projection-based
++ dynasty value** (`projected_value_table` swaps `projected_ppg` in as the value basis →
+Jefferson surplus +132→−2, Hockenson +112→−2; `dynasty_value_table` discounts multi-year
+projected fair across `years_2026` at 0.10/yr; consolidated `data/processed/player_value_2026.csv`
+is the master table the Streamlit app reads); **M5 Streamlit app core + M6 extensions** (`src/app/`:
+`Home.py` over/under board with horizon toggle + filters + colored surplus styling;
+`pages/1_Player_Card.py` per-player deep-dive with multi-year projection chart + context;
+`pages/2_Market_Driver.py` 4 tabs — Driver Ranking, Relationship Explorer, What-if Simulator,
+Over-pay Map; `pages/3_Roster.py` team selector + cap summary + drop/extend/tag/keep
+recommendations encoding rules §6–§9; `pages/4_Auction.py` FA pool ranked by `max_fair_bid`
+with per-position tabs; `pages/5_Trade.py` two-sided trade evaluator with net current +
+dynasty value/cap deltas). Preliminary summary figure.
 
 **Key design decision (2026-05-27):** fair value is **anchored to objective
 production (VOR), not fit to actual salaries.** A `salary ~ features` model learns
@@ -179,20 +211,26 @@ consistency**: `vor_adj = vor − 0.5·downside_deviation` (`value.RISK_LAMBDA`)
 penalizing *bust* weeks (floor risk in a weekly H2H league) but **not** big ceiling
 weeks — boom weeks must not hurt elite RBs like Gibbs/Bijan (user-confirmed).
 
+**✅ Pricing fix (2026-05-27, see [[value-pricing-degenerate-fix]]):** the prior subtractive
+risk penalty + $1 floor (84% of players floored to `prod_fair=1`, Puka ≈ 1,090) was replaced
+with (a) a **multiplicative consistency factor** bounded in `[0.5, 1]` (volatile-but-startable
+players are penalized but never zeroed) and (b) **deep-baseline pricing**: redistribute the cap
+pool over `deep_vor = prod_adj − 0.5·replacement[pos]`. Sub-baseline players now get
+`prod_fair = 0` (their salary registers as surplus). Result: rate 87→15, top fair 1,090→291,
+sub-baseline 84%→34%, AJ Brown overpaid by 144 (fair 56), Jefferson by 132 (fair 18). The
+remaining single-season distortions (Jefferson's down 2025) are what the projection (S2–S4) fixes.
+
 **Immediate next steps when resuming (priority order):**
-1. **Dynasty horizon** *(now the biggest lever)* — the production lens currently
-   values on **single-season 2025** production, so a down/injury year tanks a star
-   (e.g. Justin Jefferson ~11 PPG → "overpaid") and 1-QB VOR is harsh on QBs. Add
-   age curves + multi-year projected value (use `production.expected_ppg` +
-   multi-season history) so young cheap players and aging stars are valued right.
-   Report current-season *and* dynasty value.
-2. **Make `prod_fair` more actionable** — the VOR→$ redistribution is auction-style
-   and **concentrated** (elite fair values reach ~1,090 — risk-adjusting shrank the
-   positive-VOR pool and raised the per-point rate — vs the ~200 actual max), so
-   trust the *ranking/direction* over the literal magnitude. Consider a budget-/
-   roster-constrained or compressed pricing for realistic dollar targets.
-3. **Performance projection** (orig. Phase D): forecast PPG over contract years.
-4. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
+1. **Use it and iterate.** All milestones (M1–M6) of the approved plan are done; the
+   `value-engine-projection-app` branch is ready to merge to main. Open `streamlit run
+   src/app/Home.py`, explore real decisions, and feed back which signals are good vs
+   misleading.
+2. **Phase E — Roster optimization** (later): integer-cap-constrained keep/cut/tag/extend/
+   trade recommender beyond the heuristic on the Roster page.
+3. **Refinements as warranted**: more historical seasons (extend beyond 2022–25 to stabilize
+   projection + age curves); reconstruct weekly skill scoring from nflverse so the FA pool
+   gets a real consistency factor; tune `RISK_LAMBDA`/`DEEP_FACTOR`/`DISCOUNT_RATE` from
+   real usage; trade reconciliation (active roster still lags trades).
 
 Minor open items: trade reconciliation (active roster lags trades; Extensions tab
 is authoritative); a couple of league-rule unknowns (extension salary-setting,
