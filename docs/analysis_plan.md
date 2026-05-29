@@ -107,6 +107,15 @@ the model only sees his 11 PPG year); the replacement baseline isn't risk-adjust
 
 ### Phase D — Performance projection & risk (value second)
 - Project future PPG over contract years using **age curves by position** (fit on historical nflverse data) + recent performance + advanced metrics. Feeds dynasty value.
+- ✅ **Per-player longitudinal context (S2, done 2026-05-28).** `src/data/context.py`
+  adds, per `(espn_id, season)`: `{m}_prior`/`_baseline`/`_baseline_sd`/`_delta`/`_z` via
+  the no-leakage `shift(1).rolling(...)` transform (masks `games < min_games` before
+  rolling). Diagnostic rollups: `usage_trend`, `results_trend`, `qb_context`, and the
+  `year_type` ∈ `{up, par, down, rookie, partial}` glance flag. **Jefferson 2025** signature
+  is exactly the rebound pattern we wanted — `down`, `usage_trend +0.81` (role intact),
+  `results_trend −3.90` (efficiency crashed), `qb_context −9.15` (terrible offense
+  environment). Cached to `data/processed/training_frame_context.parquet`.
+
 - ✅ **Consistency / variance (first cut done).** Value a steady player above a
   boom-bust one with the same mean — this is a **weekly head-to-head** league (you
   bank a win, not a season total; a 0 loses the matchup). Implemented as a
@@ -125,15 +134,13 @@ the model only sees his 11 PPG year); the replacement baseline isn't risk-adjust
 ## Immediate next steps (when we resume)
 An approved plan to build per-player context + projection + dynasty value + a Streamlit
 app is **in progress on branch `value-engine-projection-app`** (M1 data dictionary, S1 team
-context, and the pricing fix done & pushed). Next, in priority order:
-1. **Per-player context** (`src/data/context.py`): baseline/delta/z + `year_type` (down/up/par),
-   no-leakage `shift(1).rolling`. Diagnostics now + features for the projection.
-2. **Next-season projection** (`src/models/projection.py`) + age curves; then **dynasty value**
-   (current + multi-year via `years_2026`) — fixes the single-season distortions still present
-   (Jefferson/AJ Brown reading overpaid off their 2025 down years).
-3. **Streamlit app**: market/driver explorer, over/under board, value card, roster view
+context, the pricing fix, **and S2 per-player context** done & pushed). Next, in priority order:
+1. **Next-season projection** (`src/models/projection.py`) + age curves; then **dynasty value**
+   (current + multi-year via `years_2026`) — using S2's context features as predictors. Fixes
+   the single-season distortions (Jefferson/AJ Brown reading overpaid off 2025 down years).
+2. **Streamlit app**: market/driver explorer, over/under board, value card, roster view
    (drop/extend/tag/keep), auction bid targets, trade evaluator.
-4. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
+3. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
 
 ## Open questions for later
 - Exact advanced-metric set to prioritize per position.

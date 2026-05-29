@@ -127,7 +127,26 @@ value-above-baseline. Designed to avoid the earlier $1-floor degeneracy.
 - **market_fair / surplus_market** — secondary "market price" lens: HistGradientBoosting fit of
   `salary ~ features`. R² is a *diagnostic we deliberately do not maximize*.
 - **expected_ppg** — production model's same-season PPG estimate (`models/production.py`).
-- **projected PPG** *(future, S2–S4)* — next-season / multi-year PPG from the projection model.
+- **projected PPG** *(future, S3–S4)* — next-season / multi-year PPG from the projection model.
+
+### Per-player longitudinal context (`models/context.py`)
+For each chosen metric `m` per `(espn_id, season)`:
+- **`{m}_prior`** — previous season's raw value (`shift(1)` per player).
+- **`{m}_baseline`** — trailing rolling mean over `window` *prior* seasons (default 3),
+  computed as `shift(1).rolling(window, min_periods=min_seasons).mean()` (no-leakage by
+  construction). Seasons with `games < min_games` (default 6) are masked to NaN *before*
+  rolling so injury-shortened years don't pollute the baseline.
+- **`{m}_baseline_sd`**, **`{m}_delta`** = `m − baseline`, **`{m}_z`** = `delta / baseline_sd`.
+- **`usage_trend`** — mean of the *sticky* role-metric z-scores (target_share, wopr,
+  snap_pct, carries, adot). Positive = role held/grew.
+- **`results_trend`** — mean of the *volatile* efficiency-metric z-scores (EPA, catch%,
+  RACR, ryoe/att, cpoe, on_tgt%, yac_above_expected). Positive = efficiency held.
+- **`qb_context`** — team passing-EPA z-score (WR/TE/QB) or team rushing-EPA z-score (RB).
+  Captures offense-environment-driven up/down years (e.g. Jefferson 2025 = `−9.15`).
+- **`year_type`** ∈ `{up, par, down, rookie, partial}` — one-glance label off `ppg_z`
+  (`> 0.75` up, `< -0.75` down, else par). Overridden to `rookie` when the baseline is
+  unavailable (no usable prior data; covers literal rookies *and* sophomores with only 1
+  prior season) or `partial` when current `games < min_games`.
 
 *(Newer context/projection columns — `{metric}_baseline/_delta/_z`, `year_type`, dynasty value —
 are documented as they land; see [analysis_plan.md](analysis_plan.md).)*
