@@ -118,6 +118,7 @@ python -m src.data.dataset   # build unified 2026 player dataset + efficiency te
 python -m src.data.population # build all-NFL-skill-players × 2022-2025 training frame
 python -m src.data.context   # per-player baseline/delta/z + year_type (down/up/par diagnostic)
 python -m src.models.production # production model (exp PPG, OOF R²) + replacement levels/VOR
+python -m src.models.projection # next-season PPG projection (OOF R² 0.48) + age curves -> projected_production_2026.csv
 python -m src.models.value   # both-lens fair value (production-anchored + market-fit) + over/under lists
 python -m src.viz.value      # faceted value scatter (salary vs PPG; figures/value_facets_*.png)
 python -m src.viz.value_interactive # interactive hover scatter -> figures/value_interactive.html
@@ -177,7 +178,9 @@ PPG policy ([[ppg-basis-policy]]); S1 team/offense context; **production-pricing
 **S2 per-player longitudinal context** (`src/data/context.py`: prior/baseline/delta/z + a
 `year_type` ∈ `{up, par, down, rookie, partial}` glance flag, no-leakage `shift(1).rolling`;
 Jefferson 2025 = `down` + usage intact + results crashed + bad QB context = the rebound signature
-we wanted, identified automatically). Preliminary summary figure.
+we wanted, identified automatically); **S3 next-season projection model** (`src/models/projection.py`:
+OOF R² 0.48 on 1,167 transition pairs, NFL-wide projected PPG cached; Jefferson 11.1→17.85
+rebound recognized; positional age curves for the dynasty extension). Preliminary summary figure.
 
 **Key design decision (2026-05-27):** fair value is **anchored to objective
 production (VOR), not fit to actual salaries.** A `salary ~ features` model learns
@@ -205,12 +208,10 @@ sub-baseline 84%→34%, AJ Brown overpaid by 144 (fair 56), Jefferson by 132 (fa
 remaining single-season distortions (Jefferson's down 2025) are what the projection (S2–S4) fixes.
 
 **Immediate next steps when resuming (priority order):**
-1. **S3 — next-season projection** ([projection.py] new) + age curves → consumes S2's context
-   features as predictors; fixes single-season distortions (Jefferson/AJ Brown down years);
-   enables dynasty value.
-2. **S4 — value off projected production** (current + **dynasty** via `years_2026`) +
-   consolidated `player_value_2026.csv`.
-3. **Streamlit app** (M5–M6): market/driver explorer, over/under board, player value card,
+1. **S4 — value off projected production** (current + **dynasty** via `years_2026`) +
+   consolidated `player_value_2026.csv`. Uses S3's `projected_ppg` as the VOR basis,
+   replacing the single-season 2025 PPG in `production_value_table`.
+2. **Streamlit app** (M5–M6): market/driver explorer, over/under board, player value card,
    roster view + drop/extend/tag/keep, auction bid targets, trade evaluator.
 
 Minor open items: trade reconciliation (active roster lags trades; Extensions tab

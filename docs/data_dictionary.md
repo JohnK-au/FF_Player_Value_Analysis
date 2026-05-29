@@ -127,7 +127,13 @@ value-above-baseline. Designed to avoid the earlier $1-floor degeneracy.
 - **market_fair / surplus_market** — secondary "market price" lens: HistGradientBoosting fit of
   `salary ~ features`. R² is a *diagnostic we deliberately do not maximize*.
 - **expected_ppg** — production model's same-season PPG estimate (`models/production.py`).
-- **projected PPG** *(future, S3–S4)* — next-season / multi-year PPG from the projection model.
+- **projected_ppg** (`models/projection.py`) — next-season PPG from a HistGBR fit of
+  `ppg_{t+1} ~ features_t + context_t + age + draft + combine`. OOF R² ≈ 0.48 (projecting
+  the future is hard with 3 transition pairs; treat as directional). Cached NFL-wide to
+  `data/processed/projected_production_2026.csv`.
+- **age curve** (positional YoY PPG ratio by integer age) — multiplicative multiplier
+  used to extend the 1-year projection across remaining contract years for dynasty value.
+  Thin (3 transitions per cell) — magnitudes are directional.
 
 ### Per-player longitudinal context (`models/context.py`)
 For each chosen metric `m` per `(espn_id, season)`:

@@ -106,7 +106,14 @@ engine now has **two lenses** (`src/models/value.py`):
 the model only sees his 11 PPG year); the replacement baseline isn't risk-adjusted.
 
 ### Phase D — Performance projection & risk (value second)
-- Project future PPG over contract years using **age curves by position** (fit on historical nflverse data) + recent performance + advanced metrics. Feeds dynasty value.
+- ✅ **Next-season projection (S3, done 2026-05-28).** `src/models/projection.py` fits a
+  HistGBR for `ppg_{t+1} ~ features_t + S2 context + age + draft + combine` on transition
+  pairs (2022→23, 23→24, 24→25). **OOF R² 0.481** (MAE 3.5 PPG) — directional, honest given
+  3 transitions. `projected_production(2026)` scores all NFL skill players. Headline
+  validation: **Justin Jefferson 11.1 → 17.85** (rebound recognized via stable usage +
+  historical baseline); Drake Maye 30.5 → 16.2 (rookie-year regression); A.J. Brown
+  15.4 → 16.0 (mild rebound). Plus **positional age curves** (median YoY PPG ratio by
+  position × integer age) to extend forward across contract years for dynasty value.
 - ✅ **Per-player longitudinal context (S2, done 2026-05-28).** `src/data/context.py`
   adds, per `(espn_id, season)`: `{m}_prior`/`_baseline`/`_baseline_sd`/`_delta`/`_z` via
   the no-leakage `shift(1).rolling(...)` transform (masks `games < min_games` before
