@@ -83,7 +83,13 @@ engine now has **two lenses** (`src/models/value.py`):
   all NFL skill players × 2022–2025, 2,659 rows) + **production model**
   ([`production.py`](../src/models/production.py): expected PPG, OOF **R² 0.80**)
   + positional **replacement levels / VOR**.
-- **C3.** Report **current-season cap efficiency** and a **dynasty value** (C/D combined).
+- ✅ **C3 / S4 done (2026-05-28).** Current-season value now uses **projected 2026 PPG**
+  (`projected_value_table` → `value_2026`/`surplus_2026`) — Jefferson rehabilitated
+  (surplus +132 → −2; Hockenson +112 → −2). **Dynasty value** = discounted multi-year
+  sum via positional age curves + `discount_rate=0.10`/yr (`dynasty_value_table` →
+  `dynasty_value`/`dynasty_surplus` over `years_2026`). Consolidated master table:
+  `data/processed/player_value_2026.csv` (current + dynasty + market lens + S2
+  context — the table the Streamlit app reads).
 
 - ✅ **Team/offense efficiency context** added to `ADV_NUM` (`team_pass_epa`/`team_cpoe`/
   `team_rush_epa`/`team_pass_rate`, from the same pbp) → production R² 0.80→0.81, market lens
@@ -141,13 +147,13 @@ the model only sees his 11 PPG year); the replacement baseline isn't risk-adjust
 ## Immediate next steps (when we resume)
 An approved plan to build per-player context + projection + dynasty value + a Streamlit
 app is **in progress on branch `value-engine-projection-app`** (M1 data dictionary, S1 team
-context, the pricing fix, **and S2 per-player context** done & pushed). Next, in priority order:
-1. **Next-season projection** (`src/models/projection.py`) + age curves; then **dynasty value**
-   (current + multi-year via `years_2026`) — using S2's context features as predictors. Fixes
-   the single-season distortions (Jefferson/AJ Brown reading overpaid off 2025 down years).
-2. **Streamlit app**: market/driver explorer, over/under board, value card, roster view
-   (drop/extend/tag/keep), auction bid targets, trade evaluator.
-3. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
+context, the pricing fix, S2 per-player context, S3 next-season projection, **and S4
+projection-based + dynasty value** done & pushed; master `player_value_2026.csv` cached).
+Next, in priority order:
+1. **Streamlit app**: market/driver explorer (relationship + ranking + what-if + over-pay
+   map), over/under board, value card, roster view (drop/extend/tag/keep), auction bid
+   targets, trade evaluator.
+2. **Roster optimization** (Phase E): keep/cut/tag/extend/trade under the 1500 cap.
 
 ## Open questions for later
 - Exact advanced-metric set to prioritize per position.

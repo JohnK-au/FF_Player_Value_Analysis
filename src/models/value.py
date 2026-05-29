@@ -53,6 +53,10 @@ MIN_CONSISTENCY_FACTOR = 0.5
 # fair=$1 with a single player absorbing nearly the whole cap pool.
 DEEP_FACTOR = 0.5
 
+# Dynasty discount: how much each future contract year is worth relative to year 1.
+# At 0.10/yr, a year-2 dollar is worth 0.91, year-3 is worth 0.83, year-5 ≈ 0.68.
+DISCOUNT_RATE = 0.10
+
 
 def _prepare(df: pd.DataFrame) -> pd.DataFrame:
     d = df[df["position_group"].isin(SKILL)].copy()
@@ -154,6 +158,135 @@ def production_value_table(
     return m, rate, repl
 
 
+def projected_value_table(
+    target_season: int = 2026,
+    risk_lambda: float = RISK_LAMBDA,
+    deep_factor: float = DEEP_FACTOR,
+) -> tuple[pd.DataFrame, float, dict]:
+    """Same pricing recipe as ``production_value_table`` but on **projected** PPG.
+
+    Replaces single-season 2025 PPG with the next-season projection (S3) as the value
+    basis — de-flukes single-season distortions (Jefferson's down 2025 → projected
+    rebound). Consistency factor still applies (the volatility risk doesn't go away).
+    Replacement levels are computed NFL-wide on projected PPG.
+    """
+    from ..data.dataset import build_player_dataset
+    from .projection import projected_vor_table
+
+    pvor, repl = projected_vor_table(target_season)
+    base = build_player_dataset()
+    base = base[base["position_group"].isin(SKILL)].copy()
+    base["espn_id"] = pd.to_numeric(base["espn_id"], errors="coerce").astype("Int64")
+    base = base.dropna(subset=["espn_id"]).drop_duplicates("espn_id")
+
+    keep = pvor[["espn_id", "projected_ppg", "replacement", "vor"]].rename(
+        columns={"replacement": "replacement_proj", "vor": "vor_proj"}
+    )
+    m = base.merge(keep, on="espn_id", how="left")
+    m = m.merge(weekly_consistency(target_season - 1), on="espn_id", how="left")
+
+    rel = (risk_lambda * m["downside"] / m["projected_ppg"]).fillna(0.0)
+    m["consistency_factor"] = (1 - rel).clip(lower=MIN_CONSISTENCY_FACTOR, upper=1.0).round(3)
+    m["prod_adj_proj"] = (m["projected_ppg"] * m["consistency_factor"]).round(2)
+
+    deep_bl = {pos: round(deep_factor * v, 2) for pos, v in repl.items()}
+    m["deep_baseline_proj"] = m["position_group"].map(deep_bl)
+    m["deep_vor_proj"] = (m["prod_adj_proj"] - m["deep_baseline_proj"]).round(2).clip(lower=0)
+
+    priced_pool = m[m["prod_adj_proj"].notna() & (m["deep_vor_proj"] > 0)]
+    total_spend = m.loc[m["prod_adj_proj"].notna(), "salary_2026"].sum()
+    pool_vor = priced_pool["deep_vor_proj"].sum()
+    rate = float(total_spend / pool_vor) if pool_vor > 0 else 0.0
+    m["value_2026"] = (m["deep_vor_proj"] * rate).round(1)
+    m["surplus_2026"] = (m["salary_2026"] - m["value_2026"]).round(1)
+    return m, rate, repl
+
+
+def dynasty_value_table(
+    target_season: int = 2026,
+    risk_lambda: float = RISK_LAMBDA,
+    deep_factor: float = DEEP_FACTOR,
+    discount_rate: float = DISCOUNT_RATE,
+) -> tuple[pd.DataFrame, float, dict]:
+    """Multi-year dynasty value: discounted sum of projected per-year fair values.
+
+    For each contract player, project PPG year-by-year via positional age curves
+    (`projection.project_multiyear`), apply the same consistency factor + deep
+    baseline + redistribution rate per year, discount future years by
+    ``discount_rate``, and sum. ``dynasty_surplus`` compares the discounted total
+    value to the remaining cap cost (``salary_2026 × years_2026``).
+    """
+    from ..data.contracts import build_2026_contracts
+    from .projection import positional_age_curves, project_multiyear
+
+    base, rate, repl = projected_value_table(target_season, risk_lambda, deep_factor)
+    deep_bl = {pos: round(deep_factor * v, 2) for pos, v in repl.items()}
+
+    contracts, _ = build_2026_contracts()
+    yc = contracts[["team", "player", "years_2026"]].drop_duplicates(["team", "player"])
+    m = base.merge(yc, on=["team", "player"], how="left")
+    m["years_2026"] = m["years_2026"].fillna(1).clip(lower=1, upper=5).astype(int)
+
+    curves = positional_age_curves()
+    dyn_values = []
+    for _, r in m.iterrows():
+        if pd.isna(r["projected_ppg"]) or pd.isna(r["age"]):
+            dyn_values.append(np.nan)
+            continue
+        per_year = project_multiyear(
+            float(r["projected_ppg"]), r["position_group"],
+            float(r["age"]), int(r["years_2026"]), curves,
+        )
+        cf = float(r["consistency_factor"]) if pd.notna(r["consistency_factor"]) else 1.0
+        dl = float(deep_bl.get(r["position_group"], 0.0))
+        total = 0.0
+        for y, ppg_y in enumerate(per_year, start=1):
+            prod_adj_y = ppg_y * cf
+            deep_vor_y = max(0.0, prod_adj_y - dl)
+            fair_y = deep_vor_y * rate
+            total += fair_y / ((1.0 + discount_rate) ** (y - 1))
+        dyn_values.append(round(total, 1))
+    m["dynasty_value"] = dyn_values
+    m["dynasty_total_salary"] = (m["salary_2026"] * m["years_2026"]).round(1)
+    m["dynasty_surplus"] = (m["dynasty_total_salary"] - m["dynasty_value"]).round(1)
+    return m, rate, repl
+
+
+def player_value_2026(
+    target_season: int = 2026,
+    risk_lambda: float = RISK_LAMBDA,
+    deep_factor: float = DEEP_FACTOR,
+    discount_rate: float = DISCOUNT_RATE,
+) -> tuple[pd.DataFrame, float, dict]:
+    """Consolidated master value table — current-season + dynasty + market + context.
+
+    Combines:
+      - Projection-based current-season value (``value_2026``, ``surplus_2026``)
+      - Dynasty multi-year value (``dynasty_value``, ``dynasty_surplus``)
+      - Market-fit lens (``market_fair``, ``surplus_market``)
+      - S2 longitudinal context (``year_type``, ``usage_trend``, ``results_trend``, ``qb_context``)
+
+    This is the table the Streamlit app reads. Saved by the CLI to
+    ``data/processed/player_value_2026.csv``.
+    """
+    from ..data.context import build_context_2026
+
+    dyn, rate, repl = dynasty_value_table(target_season, risk_lambda, deep_factor, discount_rate)
+    market, _ = fair_value_table()
+    mk = (
+        market[["espn_id", "fair_salary", "surplus"]]
+        .dropna(subset=["espn_id"])
+        .drop_duplicates("espn_id")
+        .rename(columns={"fair_salary": "market_fair", "surplus": "surplus_market"})
+    )
+    ctx = build_context_2026()[
+        ["espn_id", "year_type", "usage_trend", "results_trend", "qb_context",
+         "ppg_baseline", "ppg_z"]
+    ]
+    out = dyn.merge(mk, on="espn_id", how="left").merge(ctx, on="espn_id", how="left")
+    return out, rate, repl
+
+
 def combined_value_table(
     season: int = 2025, risk_lambda: float = RISK_LAMBDA
 ) -> tuple[pd.DataFrame, float, dict]:
@@ -208,4 +341,49 @@ if __name__ == "__main__":
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     tbl.to_csv(PROCESSED_DIR / "fair_value_2026.csv", index=False)
-    print(f"\nSaved both-lens table -> {PROCESSED_DIR / 'fair_value_2026.csv'}")
+    print(f"\nSaved single-season both-lens table -> {PROCESSED_DIR / 'fair_value_2026.csv'}")
+
+    # ============================================================================
+    # PROJECTION-BASED CURRENT VALUE + DYNASTY (the consolidated master table)
+    # ============================================================================
+    print("\n\n=== PROJECTION-BASED current + DYNASTY value ===")
+    master, p_rate, p_repl = player_value_2026()
+    priced = master[master["value_2026"].notna() & (master["projected_ppg"].notna())].copy()
+    print(f"Replacement (projected PPG): "
+          + ", ".join(f"{p} {v:.1f}" for p, v in p_repl.items()))
+    floored_p = int((priced["value_2026"] == 0).sum())
+    print(f"League rate: {p_rate:.2f} cap units per deep-VOR point  |  "
+          f"{floored_p} of {len(priced)} sub-baseline (value_2026=0)  |  "
+          f"discount = {DISCOUNT_RATE}/yr (dynasty)\n")
+
+    cur_cols = ["player", "team", "position_group", "salary_2026", "ppg_2025",
+                "projected_ppg", "value_2026", "surplus_2026", "year_type"]
+    print("Most UNDER-valued (current 2026, projection-based):")
+    print(priced.nsmallest(10, "surplus_2026")[cur_cols].to_string(index=False))
+    print("\nMost OVER-valued (current 2026):")
+    print(priced.nlargest(10, "surplus_2026")[cur_cols].to_string(index=False))
+
+    dyn_cols = ["player", "team", "position_group", "salary_2026", "years_2026",
+                "dynasty_total_salary", "dynasty_value", "dynasty_surplus", "year_type"]
+    dyn_priced = priced[priced["dynasty_value"].notna()].copy()
+    print("\nMost UNDER-valued (dynasty, multi-year discounted):")
+    print(dyn_priced.nsmallest(10, "dynasty_surplus")[dyn_cols].to_string(index=False))
+    print("\nMost OVER-valued (dynasty):")
+    print(dyn_priced.nlargest(10, "dynasty_surplus")[dyn_cols].to_string(index=False))
+
+    # Headline: did the projection rehabilitate Jefferson, AJ Brown, etc.?
+    notable = ["Justin Jefferson", "AJ Brown", "Puka Nacua", "Bijan Robinson",
+               "Mark Andrews", "TJ Hockenson", "Drake Maye", "Jahmyr Gibbs"]
+    cmp_cols = ["player", "team", "position_group", "salary_2026",
+                "ppg_2025", "projected_ppg", "value_2026", "surplus_2026",
+                "dynasty_surplus", "year_type"]
+    notable_rows = priced[priced["player"].isin(notable)].copy()
+    if len(notable_rows):
+        notable_rows["_p"] = notable_rows["position_group"].map({"QB":0,"RB":1,"WR":2,"TE":3})
+        notable_rows = notable_rows.sort_values(["_p", "player"])
+        print("\nNotable players — single-season vs projection-based vs dynasty surplus:")
+        print(notable_rows[cmp_cols].to_string(index=False))
+
+    out_master = PROCESSED_DIR / "player_value_2026.csv"
+    master.to_csv(out_master, index=False)
+    print(f"\nSaved consolidated master table -> {out_master}")

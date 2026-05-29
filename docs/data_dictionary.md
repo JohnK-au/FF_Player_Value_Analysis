@@ -135,6 +135,20 @@ value-above-baseline. Designed to avoid the earlier $1-floor degeneracy.
   used to extend the 1-year projection across remaining contract years for dynasty value.
   Thin (3 transitions per cell) — magnitudes are directional.
 
+### Projection-based current + dynasty value (S4, `models/value.py`)
+The consolidated `data/processed/player_value_2026.csv` is the master table the Streamlit
+app reads. It uses `projected_ppg` (S3) as the value basis instead of single-season 2025.
+- **`value_2026`** — current-season production-anchored fair value using *projected* PPG.
+  Same recipe as `prod_fair` (consistency factor + deep baseline + redistribute) but the
+  basis is the projection, so fluke years are de-fluked.
+- **`surplus_2026`** = `salary_2026 − value_2026`.
+- **`dynasty_value`** — discounted multi-year sum: for each remaining contract year
+  (`years_2026` from `contracts.build_2026_contracts`), the projected PPG is rolled forward
+  via positional age curves, priced into the same per-year framework (`consistency_factor`
+  × deep baseline × rate), and **discounted** by `value.DISCOUNT_RATE` per year (default 0.10).
+- **`dynasty_total_salary`** = `salary_2026 × years_2026` (the locked-in cap commitment).
+- **`dynasty_surplus`** = `dynasty_total_salary − dynasty_value` (+ overpaid / − bargain).
+
 ### Per-player longitudinal context (`models/context.py`)
 For each chosen metric `m` per `(espn_id, season)`:
 - **`{m}_prior`** — previous season's raw value (`shift(1)` per player).

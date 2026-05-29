@@ -115,6 +115,26 @@ def projected_production(
     return src[["espn_id", "name", "position_group", "age", "ppg", "projected_ppg"]].copy()
 
 
+# --- Replacement levels + VOR on projected production -------------------------
+def projected_vor_table(
+    target_season: int = 2026, value_col: str = "projected_ppg"
+) -> tuple[pd.DataFrame, dict]:
+    """Replacement-level VOR computed on projected next-season PPG.
+
+    Mirrors ``production.vor_table`` but for projected production. No games filter is
+    applied (the projection answers "what would they score over a full season"). The
+    pool is the NFL-wide projected_production output.
+    """
+    from .production import replacement_levels
+
+    pool = projected_production(target_season).copy()
+    pool = pool[pool[value_col].notna()]
+    repl = replacement_levels(pool, value_col)
+    pool["replacement"] = pool["position_group"].map(repl).round(2)
+    pool["vor"] = (pool[value_col] - pool["replacement"]).round(2)
+    return pool, repl
+
+
 # --- Age curves for multi-year (dynasty) projection ---------------------------
 def positional_age_curves(df: pd.DataFrame | None = None) -> pd.DataFrame:
     """Median YoY PPG ratio by (position, integer age). Multiplicative age multiplier.

@@ -180,7 +180,11 @@ PPG policy ([[ppg-basis-policy]]); S1 team/offense context; **production-pricing
 Jefferson 2025 = `down` + usage intact + results crashed + bad QB context = the rebound signature
 we wanted, identified automatically); **S3 next-season projection model** (`src/models/projection.py`:
 OOF R² 0.48 on 1,167 transition pairs, NFL-wide projected PPG cached; Jefferson 11.1→17.85
-rebound recognized; positional age curves for the dynasty extension). Preliminary summary figure.
+rebound recognized; positional age curves for the dynasty extension); **S4 projection-based
++ dynasty value** (`projected_value_table` swaps `projected_ppg` in as the value basis →
+Jefferson surplus +132→−2, Hockenson +112→−2; `dynasty_value_table` discounts multi-year
+projected fair across `years_2026` at 0.10/yr; consolidated `data/processed/player_value_2026.csv`
+is the master table the Streamlit app will read). Preliminary summary figure.
 
 **Key design decision (2026-05-27):** fair value is **anchored to objective
 production (VOR), not fit to actual salaries.** A `salary ~ features` model learns
@@ -208,11 +212,10 @@ sub-baseline 84%→34%, AJ Brown overpaid by 144 (fair 56), Jefferson by 132 (fa
 remaining single-season distortions (Jefferson's down 2025) are what the projection (S2–S4) fixes.
 
 **Immediate next steps when resuming (priority order):**
-1. **S4 — value off projected production** (current + **dynasty** via `years_2026`) +
-   consolidated `player_value_2026.csv`. Uses S3's `projected_ppg` as the VOR basis,
-   replacing the single-season 2025 PPG in `production_value_table`.
-2. **Streamlit app** (M5–M6): market/driver explorer, over/under board, player value card,
-   roster view + drop/extend/tag/keep, auction bid targets, trade evaluator.
+1. **Streamlit app** (M5–M6): market/driver explorer (relationship + ranking + what-if +
+   over-pay map, all positions), over/under board, player value card (search → card with
+   year-by-year projected PPG), roster view + drop/extend/tag/keep recs, auction bid
+   targets, trade evaluator.
 
 Minor open items: trade reconciliation (active roster lags trades; Extensions tab
 is authoritative); a couple of league-rule unknowns (extension salary-setting,
