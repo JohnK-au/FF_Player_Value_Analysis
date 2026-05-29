@@ -169,12 +169,12 @@ a **production model** (expected PPG, OOF **R² 0.81**, [production.py](src/mode
 a **two-lens fair-value engine** ([value.py](src/models/value.py)); and a
 [data dictionary](docs/data_dictionary.md). Full roadmap in [docs/analysis_plan.md](docs/analysis_plan.md).
 
-**Current build (in progress):** an approved plan (saved at
-`~/.claude/plans/ok-i-am-entering-curious-map.md`) to add per-player context (down/up/par),
-a next-season **projection** model + age curves, **dynasty** value, and an interactive
-**Streamlit** app (open-source/free; current AND dynasty value side by side; market views =
-relationship explorer + driver ranking + what-if simulator + over-pay map, all positions).
-Work is on branch **`value-engine-projection-app`** (pushed). Done on it: M1 data dictionary +
+**Current state (merged on main 2026-05-29 via PR #2; branch deleted):** the approved plan
+at `~/.claude/plans/ok-i-am-entering-curious-map.md` is fully delivered — per-player context
+(down/up/par), next-season **projection** model + age curves, **dynasty** value, and an
+interactive **Streamlit** app (open-source/free; current AND dynasty value side by side;
+market views = relationship explorer + driver ranking + what-if simulator + over-pay map,
+all positions). All on main as of merge `6123d6a`. Highlights: M1 data dictionary +
 PPG policy ([[ppg-basis-policy]]); S1 team/offense context; **production-pricing fix**
 (deep-baseline + multiplicative consistency factor — top fair 1,090→291, sub-baseline 84%→34%);
 **S2 per-player longitudinal context** (`src/data/context.py`: prior/baseline/delta/z + a
@@ -221,10 +221,12 @@ sub-baseline 84%→34%, AJ Brown overpaid by 144 (fair 56), Jefferson by 132 (fa
 remaining single-season distortions (Jefferson's down 2025) are what the projection (S2–S4) fixes.
 
 **Immediate next steps when resuming (priority order):**
-1. **Use it and iterate.** All milestones (M1–M6) of the approved plan are done; the
-   `value-engine-projection-app` branch is ready to merge to main. Open `streamlit run
-   src/app/Home.py`, explore real decisions, and feed back which signals are good vs
-   misleading.
+1. **Use it and iterate.** All milestones (M1–M6) of the approved plan are merged to main.
+   Open `streamlit run src/app/Home.py`, explore real decisions, and feed back which
+   signals are good vs misleading. When a projection looks suspicious, trace the chain:
+   career stats in `training_frame.csv` → S2 context (`year_type`, `*_z`, `usage_trend`,
+   `qb_context`) → projection-model top drivers → pricing engine (consistency factor +
+   deep baseline + rate). See [[projection-investigation-pattern]].
 2. **Phase E — Roster optimization** (later): integer-cap-constrained keep/cut/tag/extend/
    trade recommender beyond the heuristic on the Roster page.
 3. **Refinements as warranted**: more historical seasons (extend beyond 2022–25 to stabilize
