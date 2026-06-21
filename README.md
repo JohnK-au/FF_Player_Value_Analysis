@@ -118,6 +118,4 @@ df = fetch_tab()   # raw DataFrame of the contract sheet
 ## Data Sources
 
 - **ESPN league** — accessed via league/team/season identifiers (kept local).
-- **Contract spreadsheet** — Google Sheet referenced by `CONTRACTS_SHEET_ID` in
-  your local `.env` (see [Configuration](#configuration)); the link is kept out
-  of this public repository.
+- **Contract spreadsheet** — Google Sheet referenced by `CONTRACTS_SHEET_ID`
