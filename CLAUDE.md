@@ -169,6 +169,17 @@ a **production model** (expected PPG, OOF **R² 0.81**, [production.py](src/mode
 a **two-lens fair-value engine** ([value.py](src/models/value.py)); and a
 [data dictionary](docs/data_dictionary.md). Full roadmap in [docs/analysis_plan.md](docs/analysis_plan.md).
 
+**Active research branch (2026-06-24):** `wr-weekly-archetypes` (pushed, NOT yet merged) —
+exploratory week-level WR model + archetype tree using per-week pbp aggregation + NGS
+weekly + Vegas lines + rolling defense + rolling player history. Findings in
+[docs/research/wr_weekly_archetypes.md](docs/research/wr_weekly_archetypes.md). Headline:
+predictive R² is tiny (0.024) because per-week is high-variance, BUT the descriptive
+ceiling is R² 0.68 (knowing role + efficiency that week) and the season-aggregated
+weekly model hits R² 0.68 PPG (vs season-level 0.48 — caveat: in-season vs pre-season,
+not strictly comparable). Key counterintuitive finding: aDOT alone is slightly *negative*
+for fantasy production; the dominant archetype is "volume + accurate QB + good YAC" not
+"deep threat + accurate QB". Next: extend the architecture to RB/TE/QB.
+
 **Current state (merged on main 2026-05-29 via PR #2; branch deleted):** the approved plan
 at `~/.claude/plans/ok-i-am-entering-curious-map.md` is fully delivered — per-player context
 (down/up/par), next-season **projection** model + age curves, **dynasty** value, and an
