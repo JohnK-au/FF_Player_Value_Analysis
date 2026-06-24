@@ -63,7 +63,9 @@ PLAYER_ROLL_BASE = [
     "fantasy_points", "targets", "target_share",
     "air_yards", "air_yards_share", "rec_epa",
     "team_pass_epa_play", "team_cpoe",
-    "avg_separation", "catch_percentage",
+    "avg_separation", "avg_intended_air_yards", "avg_yac_above_expectation",
+    "catch_percentage",
+    "snap_pct",  # added 2026-06-24 — option 3 from the iteration plan
 ]
 ROLL_WINDOW = 4
 PLAYER_ROLL_FEATS = [f"{c}_roll{ROLL_WINDOW}" for c in PLAYER_ROLL_BASE]
