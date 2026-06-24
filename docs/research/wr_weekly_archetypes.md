@@ -149,3 +149,132 @@ The conditional-archetype framing is the win here, not the OOF R². The user's
 intuition was right — week-level surfaces structure that season aggregates hide —
 but the structure is best presented as **descriptive archetypes**, not as a
 high-accuracy predictor.
+
+---
+
+## Second-pass results (2026-06-24, same day)
+
+### Stable-trait pair exploration (the user's question)
+
+Conditional mean fantasy points by **quartile × quartile** of rolling stable traits:
+
+**Volume × accurate QB** — biggest signal of all the pairs tested:
+```
+                            CPOE_Q1   CPOE_Q2   CPOE_Q3   CPOE_Q4
+target_share Q1 (low)         7.4      9.6       9.4       8.2
+target_share Q2              10.7     12.4      11.4      12.3
+target_share Q3              11.6     11.9      15.2      14.2
+target_share Q4 (high)       14.9     15.4      17.4     18.3
+```
+*Q4×Q4 = 18.3 PPG vs Q1×Q1 = 7.4 PPG — biggest spread of any pair.*
+
+**aDOT × accurate QB (the user's specific question)** — **counterintuitive**:
+```
+                            CPOE_Q1   CPOE_Q2   CPOE_Q3   CPOE_Q4
+aDOT Q1 (short)              13.4     12.8      13.8      14.1
+aDOT Q2                      12.2     12.7      14.3     15.4   ← peak
+aDOT Q3                      11.3     12.8      13.4      15.0
+aDOT Q4 (deep)                9.5     12.2      13.0     11.3
+```
+*Deep specialists (Q4-aDOT) DO NOT benefit more from accurate QBs. Peak is at
+Q2-aDOT (intermediate routes) × Q4-CPOE — converting intermediate routes
+matters more than completing deep ones.*
+
+**Single-feature marginal effects (Q1 → Q4 PPG spread):**
+- `target_share` — **+7.8** (dominant single predictor)
+- `team_cpoe` — +2.0 (plateaus at Q3)
+- `separation` — +2.0 (monotonic)
+- `YAC over expected` — +1.7
+- `aDOT` — **−2.1** (slightly negative — deep-threat penalty)
+
+**Lesson for value:** the dominant archetype isn't "deep-threat with accurate QB" —
+it's **"volume + accurate QB + good YAC ability"**. Deep specialists actually
+underperform a typical WR for fantasy because deep balls don't convert. This is a
+counterintuitive but consistent finding across the 4-year dataset.
+
+### Option 3 — snap-share rolling (added)
+
+`snap_pct` joined per (week, pfr_id) from `nfl.import_snap_counts`, rolled 4 weeks.
+Coverage 96%. Result: `snap_pct_roll4` becomes the #2 feature by permutation
+importance (0.074), but model R² stays 0.024 and MAE only moves 9.05 → 9.03.
+**Snap share is mostly redundant with target share for WRs** — both capture "is he
+on the field and getting looked at." Likely a bigger lift when this approach is
+extended to RBs (where snap share varies more independently of touches).
+
+### Option 2 — descriptive (leaky) variant ⇒ **the ceiling**
+
+Re-fit with same-week role + efficiency features (`target_share`, `snap_pct`, NGS
+`separation`/`catch_pct`/`aDOT`/`YAC_above_expectation`, team `pass_epa`/`cpoe`,
+env, static) — but NOT trivially-score-correlated stats (no targets/receptions/
+air_yards/rec_epa, since those are basically the box score):
+
+```
+n = 2,905 WR-weeks
+OOF R² = 0.684    MAE = 4.90 PPG
+```
+
+**The 0.66 R² gap (0.684 descriptive vs 0.024 predictive) is the cost of not
+knowing pre-game how the WR will be USED + how EFFICIENT he'll be.**
+
+Top descriptive features by permutation importance:
+```
+catch_percentage              1.07  ← single biggest
+avg_yac_above_expectation     0.19
+target_share                  0.16
+avg_intended_air_yards        0.13
+team_pass_epa_play            0.11
+air_yards_share               0.08
+team_pass_rate                0.07
+```
+
+In plain English: **if we knew a WR's actual catch rate, YAC, target share, and
+his team's QB efficiency that game, we'd predict his fantasy points within ~5
+PPG**. Almost all pre-game unpredictability is uncertainty about role and
+efficiency that game — *not* about the player's profile or environment.
+
+This is the right interpretation of the low predictive R²: the engine isn't
+*broken*, the format itself is high-variance and most of the variance is the
+in-game realization of role and efficiency, which is fundamentally a future event.
+
+### Option 1 — season aggregation
+
+Stack the weekly OOF predictions per (season, espn_id), filter to ≥6 weeks
+(253 player-seasons):
+
+```
+Season-total points:  R² = 0.770   MAE = 25.6 pts
+Season PPG:           R² = 0.680   MAE = 2.58 PPG
+```
+
+The existing season-level production model is **R² = 0.48** (`models/production.py`).
+By that comparison the weekly-aggregated model wins handily (0.68 vs 0.48 on PPG).
+
+**Important caveat:** the comparison isn't strictly apples-to-apples. The weekly
+rolling features at week W use weeks 1..(W−1) of the **same season** — so this is
+an **in-season** projection (each prediction benefits from progressive in-season
+information). The season-level R² 0.48 is for **next-season** prediction from
+prior-season features — a strictly harder problem.
+
+**Implication:** the weekly model is a strong **in-season projection** tool
+(useful for in-season trade evaluation, weekly start/sit, mid-season cap
+decisions). It does *not* replace the pre-season projection used by the value
+engine. Both have a place, and a future iteration could fit a "pre-season-only"
+weekly model (restrict to prior-season rolling) to make the comparison fair.
+
+## Updated recommendations
+
+1. The **archetype tree + conditional heat** is the strongest deliverable —
+   surface it in the Streamlit app's Market/Driver Explorer as a position-
+   specific "WR archetype" panel (rules + heatmap). Already actionable.
+2. The **stable-trait hierarchy** (target_share ≫ team_cpoe ≈ separation ≈ YAC,
+   aDOT slightly negative) should inform the value engine's per-player features
+   when ranking long-term WR upside. Deep-threat specialists deserve a discount,
+   not a premium.
+3. The **descriptive R² 0.68** is a *useful* upper bound for any future weekly
+   tool — it tells us we shouldn't expect more than ~5 PPG MAE on weekly
+   projections even with great features.
+4. The **in-season weekly aggregator** (R² 0.68 PPG) could power a *separate*
+   in-season tool: "the season-to-date data says player X is on pace for Y PPG."
+   Distinct from pre-season valuation.
+5. Apply the same architecture to **RB / TE / QB** next — for RBs especially,
+   snap_pct will likely add more lift than it did for WRs.
