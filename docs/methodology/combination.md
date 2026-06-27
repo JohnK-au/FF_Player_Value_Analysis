@@ -1,14 +1,17 @@
 # Combination Function
 
-> **Status:** Phase 1D — Production × Team sub-value multiplier locked for WR.
-> Final 6-component combination method workshopped in Phase 5 (after all 4
-> positions have their full component scores).
+> **Status:** Phase 1D — **On-Field Value** (Production × Team) locked for WR.
+> Final 6-component **Dynasty Value** combination method workshopped in
+> Phase 5 (after all 4 positions have their full component scores).
 
 ## Intent
 
-Combine the 6 component scores (each in [0, 100]) into a single **Dynasty
-Value** — the headline metric for player worth. Plus, for staged validation,
-combine specific component pairs into intermediate sub-values.
+Combine component scores into intermediate + final headline values:
+
+- **On-Field Value** = Production × Team multiplier. Captures "what the
+  player is delivering on the field given their environment." Phase 1D.
+- **Dynasty Value** = combine of all 6 component scores. The headline metric
+  for player worth. Phase 5 locks the method.
 
 ## Interfaces
 
@@ -25,15 +28,20 @@ def combine(components: pd.DataFrame, method: str = "uniform_weighted_sum") -> p
 
 Pluggable via `method` keyword so swapping strategies doesn't touch callers.
 
-### Sub-value combine — Production × Team (Phase 1D, WR)
+### On-Field Value — Production × Team (Phase 1D, WR)
 
-A diagnostic / staged-validation combine. Not currently a column in the
-master CSV; computed on demand for inspection.
+Per-player intermediate combine; written to the master CSV as the
+``on_field_value`` column.
 
 ```
-multiplier = MULT_LO + (team_value / 100) * (MULT_HI - MULT_LO)
-sub_value  = production_value * multiplier
+multiplier      = MULT_LO + (team_value / 100) * (MULT_HI - MULT_LO)
+on_field_value  = production_value * multiplier
 ```
+
+Implementation: [`src/models/components/combine.py::on_field_value`](../../src/models/components/combine.py).
+Multiplier bands are position-keyed via ``MULTIPLIER_BANDS``; non-WR
+positions currently default to ``(1.0, 1.0)`` (pass-through) until their
+components land in Phases 2-4.
 
 ## Locked: Production × Team multiplier band (WR)
 
@@ -55,6 +63,17 @@ variance suggests.
 This decision is intentionally documented so future-us understands the band
 isn't data-fit; it's a deliberate trade between empirical conservatism and
 design preference.
+
+## Naming
+
+| Term | What it is |
+|---|---|
+| **Production** | Per-position component score [0, 100] — past on-field production tiered + recency-blended |
+| **Team** | Per-position component score [0, 100] — offensive-environment quality |
+| **On-Field Value** | Production × Team multiplier = "what they deliver on the field given their environment" |
+| Age / Injury / Position / Intangibles | Per-position component scores [0, 100] — off-field dimensions |
+| **Dynasty Value** | Final combine of all 6 component scores — the headline metric |
+| Contract Value | Dynasty Value / max(years_2026, 1) — generic per-year derivation |
 
 ## Supported full-combine methods (Phase 5 decides)
 
@@ -80,6 +99,7 @@ Once Phases 1-4 produce real component scores for all 4 positions:
 | Date | Method | Notes |
 |---|---|---|
 | 2026-06-27 | `uniform_weighted_sum` | Phase 0 placeholder; all components neutral 50 so trivially returns 50 |
-| 2026-06-28 | Production × Team multiplier band locked at [0.875, 1.125] for WR | User override of data-driven recommendation [0.92, 1.08] — see note above |
+| 2026-06-28 | On-Field Value (= Production × Team) multiplier band locked at [0.875, 1.125] for WR | User override of data-driven recommendation [0.92, 1.08] — see note above |
+| 2026-06-28 | Name locked: "On-Field Value" for the Production × Team sub-value | Reads cleanly against Age/Injury/Position/Intangibles (off-field dimensions); appears as `on_field_value` column in the master CSV |
 
 (Append new rows as the methodology evolves.)

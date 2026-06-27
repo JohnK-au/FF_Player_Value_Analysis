@@ -41,6 +41,7 @@ OUTPUT_COLS = (
     *IDENTITY_COLS,
     *CONTRACT_COLS,
     *COMPONENT_COLS,
+    "on_field_value",   # Production x Team multiplier (Phase 1D); see combination.md
     "dynasty_value",
     "contract_value",
     "dynasty_surplus",
@@ -88,6 +89,9 @@ def build_player_values_v2(combination_method: str = "uniform_weighted_sum") -> 
     scored = pd.concat(pieces, ignore_index=True) if pieces else roster.iloc[0:0]
 
     if not scored.empty:
+        scored["on_field_value"] = combine.on_field_value(
+            scored["production_value"], scored["team_value"], scored["position_group"]
+        )
         scored["dynasty_value"] = combine.combine(scored, method=combination_method)
         years = scored["years_2026"].clip(lower=1)
         scored["contract_value"] = scored["dynasty_value"] / years

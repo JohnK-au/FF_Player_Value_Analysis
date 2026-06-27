@@ -69,7 +69,7 @@ intuition.
 ## Phase plan
 
 - **Phase 1C** ✅ — WR Team component implemented + empirically tuned
-- **Phase 1D** ✅ — Production × Team sub-value validated (see [combination.md](combination.md))
+- **Phase 1D** ✅ — **On-Field Value** = Production × Team locked at multiplier band [0.875, 1.125]; written to `on_field_value` column in master CSV (see [combination.md](combination.md))
 - **Phase 2 (RB)**: empirically tune RB-specific team features (likely `team_rush_epa`, plus O-line proxy if a clean source can be found)
 - **Phase 3 (QB)**: supporting-cast quality (receiver separation pool, O-line pressure-allowed)
 - **Phase 4 (TE)**: WR-like with TE-specific weight rebalancing
