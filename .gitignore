@@ -29,6 +29,9 @@ data/raw/
 *.xlsx
 *.parquet
 
+# Allowlist: subjective-override files are user-edited and must persist across sessions
+!data/research/intangibles_overrides.csv
+
 # Figures (contain league data — names, salaries)
 figures/
 *.png
