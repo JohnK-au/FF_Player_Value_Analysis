@@ -32,13 +32,16 @@ Value** (generic v1 derivation; roster-aware later).
 ```
 component scores (0-100):
    production_value  ──┐
-   age_value        ──┤
-   team_value       ──┼── combine() ──> Dynasty Value
-   injury_value     ──┤                      │
-   position_value   ──┤                      └─> Contract Value (generic v1)
-   intangibles_value──┘                             │
-                                                    └─> Contract Surplus = Contract Value − salary
-                                                    └─> Dynasty Surplus  = Dynasty Value − total remaining salary
+   age_value         ─┤
+   team_value        ─┤  ┐
+                        ├─ On-Field Value (Production × Team multiplier; Phase 1D)
+   production_value  ─┘  ┘
+                       ──┼── combine() ──> Dynasty Value
+   injury_value      ───┤                      │
+   position_value    ───┤                      └─> Contract Value (generic v1)
+   intangibles_value ───┘                            │
+                                                     └─> Contract Surplus = Contract Value − salary
+                                                     └─> Dynasty Surplus  = Dynasty Value − total remaining salary
 ```
 
 Each component module exports:
@@ -57,6 +60,7 @@ Master CSV written to `data/processed/player_value_v2_2026.csv`. Columns:
 - **Identity**: espn_id, player, team, position_group, age, years_exp
 - **Contract**: salary_2026, years_2026, dynasty_total_salary
 - **Component scores (0-100)**: production_value, age_value, team_value, injury_value, position_value, intangibles_value
+- **On-Field Value** (Phase 1D): on_field_value = production_value × team multiplier; the "what they deliver on the field given their environment" intermediate
 - **Final outputs**: dynasty_value, contract_value, dynasty_surplus, contract_surplus
 
 The legacy [`player_value_2026.csv`](../../data/processed/player_value_2026.csv)
