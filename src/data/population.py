@@ -18,9 +18,15 @@ import pandas as pd
 from ..config import PROCESSED_DIR
 from .advanced import advanced_features
 from .nflverse import combine_athleticism, draft_capital
+from .scoring import nflverse_season_production
 
 SKILL = ["QB", "RB", "WR", "TE"]
 TRAIN_SEASONS = [2022, 2023, 2024, 2025]
+# v2 extended window (2016-2025) for the per-position component models. Uses
+# nflverse seasonal_data + our 2025 scoring rules to reconstruct PPG for years
+# the league didn't exist (2016-2021), and ESPN-reported PPG for 2025 (nflverse
+# seasonal_data not yet published for 2025 as of June 2026). See docs/methodology.
+EXTENDED_TRAIN_SEASONS = list(range(2016, 2026))
 
 
 def _roster_attrs(season: int) -> pd.DataFrame:
@@ -75,6 +81,58 @@ def save_training_frame(df: pd.DataFrame | None = None) -> "pd.Path":
     df = training_frame() if df is None else df
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     out = PROCESSED_DIR / "training_frame.csv"
+    df.to_csv(out, index=False)
+    return out
+
+
+# --- v2 extended training frame (2016-2025) -----------------------------------
+def extended_season_production(season: int) -> pd.DataFrame:
+    """Per-player PPG for ``season`` using a uniform scoring basis.
+
+    Source per year:
+      - **2025**: ESPN-reported PPG (our league data; nflverse seasonal_data not
+        yet published for 2025 as of June 2026; ESPN values include yardage
+        bonuses + team-W/L which our reconstruction omits — ~0.17 PPG higher on
+        average than reconstructed would be).
+      - **2016-2024**: reconstructed via ``nflverse_season_production`` (nflverse
+        seasonal_data + our 2025 scoring rules), giving a uniform per-position
+        training target across all historical years.
+
+    Same schema as ``season_production`` — drop-in replacement for downstream
+    joins in ``extended_season_frame``.
+    """
+    if season == 2025:
+        return season_production(season)
+    return nflverse_season_production(season)
+
+
+def extended_season_frame(season: int) -> pd.DataFrame:
+    """All features for one season's skill players using the v2 PPG basis."""
+    prod = extended_season_production(season)
+    attrs = _roster_attrs(season)
+    adv = advanced_features(season).drop(columns=["gsis_id", "pfr_id"], errors="ignore")
+    draft = draft_capital()
+    comb = combine_athleticism()
+    for t in (adv, draft, comb):
+        t["espn_id"] = pd.to_numeric(t["espn_id"], errors="coerce").astype("Int64")
+
+    df = prod.merge(attrs, on="espn_id", how="left")
+    for t in (adv, draft, comb):
+        df = df.merge(t, on="espn_id", how="left")
+    df.insert(0, "season", season)
+    return df
+
+
+def extended_training_frame(seasons: list[int] | None = None) -> pd.DataFrame:
+    """Stacked per-season skill-player frames across the v2 extended window."""
+    seasons = seasons or EXTENDED_TRAIN_SEASONS
+    return pd.concat([extended_season_frame(s) for s in seasons], ignore_index=True)
+
+
+def save_extended_training_frame(df: pd.DataFrame | None = None) -> "pd.Path":
+    df = extended_training_frame() if df is None else df
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    out = PROCESSED_DIR / "training_frame_extended.csv"
     df.to_csv(out, index=False)
     return out
 
