@@ -1,58 +1,85 @@
 # Combination Function
 
-> **Status:** Phase 0 (foundation). v1 placeholder = uniform weighted sum.
-> Final combination method will be workshopped at end of Phase 4 (after all
-> positions have component scores).
+> **Status:** Phase 1D — Production × Team sub-value multiplier locked for WR.
+> Final 6-component combination method workshopped in Phase 5 (after all 4
+> positions have their full component scores).
 
 ## Intent
 
 Combine the 6 component scores (each in [0, 100]) into a single **Dynasty
-Value** — the headline metric for player worth.
+Value** — the headline metric for player worth. Plus, for staged validation,
+combine specific component pairs into intermediate sub-values.
 
-## Interface
+## Interfaces
+
+### Final combine — 6 components → Dynasty Value (Phase 5 will lock)
 
 ```python
 def combine(components: pd.DataFrame, method: str = "uniform_weighted_sum") -> pd.Series:
     """Combine the 6 component columns into a Dynasty Value Series.
 
-    Required columns in `components`:
-        production_value, age_value, team_value, injury_value,
-        position_value, intangibles_value
+    Required columns: production_value, age_value, team_value, injury_value,
+    position_value, intangibles_value
     """
 ```
 
-The function is **pluggable**: a single keyword arg picks the combination
-method so we can change strategies without touching callers.
+Pluggable via `method` keyword so swapping strategies doesn't touch callers.
 
-## Supported methods
+### Sub-value combine — Production × Team (Phase 1D, WR)
+
+A diagnostic / staged-validation combine. Not currently a column in the
+master CSV; computed on demand for inspection.
+
+```
+multiplier = MULT_LO + (team_value / 100) * (MULT_HI - MULT_LO)
+sub_value  = production_value * multiplier
+```
+
+## Locked: Production × Team multiplier band (WR)
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| `MULT_LO` | **0.875** | User-chosen (see note below) |
+| `MULT_HI` | **1.125** | User-chosen — Team can swing Production ±12.5% |
+
+**Note: user override of data-driven recommendation.** The residual
+regression in [team.md](team.md) showed team context explains only ~1.2% of
+WR Production residuals, with a max worst-to-best PPG swing of ~1 PPG
+(≈8% of a 13-PPG baseline). My initial empirical recommendation was a
+**tighter band of [0.92, 1.08] or even [0.95, 1.05]**. The user reviewed
+the data and chose to **widen to ±12.5%** as a subjective design decision —
+giving Team component more voice than the regression alone would support,
+reflecting belief that team context matters more than 1.2% of residual
+variance suggests.
+
+This decision is intentionally documented so future-us understands the band
+isn't data-fit; it's a deliberate trade between empirical conservatism and
+design preference.
+
+## Supported full-combine methods (Phase 5 decides)
 
 | Method | Status | Description |
 |---|---|---|
-| `uniform_weighted_sum` | **v1 default** | Each component weight = 1/6; output = average of the 6 scores. Interpretable; useful while real components are being filled in. |
-| `weighted_sum` | planned | Each component gets a fixed weight; weights sum to 1. Human-set weights based on judgment. |
-| `multiplicative` | planned | Each component scaled to [0.5, 1.5] multiplier; output = product × Production base. Production-centric. |
-| `learned` | planned | Weights learned to fit an objective. Objective TBD (actual production / user rankings / league outcomes / teacher signal). User leans toward this for the final method. |
-| `hybrid` | planned | Production + Age (weighted sum) form the base; Team / Injury / Position / Intangibles emit multipliers. |
+| `uniform_weighted_sum` | **v1 default** | Each component weight = 1/6; output = average. Interpretable placeholder. |
+| `weighted_sum` | planned | Human-set or learned per-component weights summing to 1 |
+| `multiplicative` | planned | Production base × multiplier in [low, high] from each other component |
+| `learned` | planned | Weights learned from an objective (user rankings / historical fantasy outcomes / teacher signal). User leans toward this for the final method. |
+| `hybrid` | planned | Mixed: Production + Age weighted sum forms the base; Team / Injury / Position / Intangibles emit multipliers |
 
 ## Decision criteria (for Phase 5 workshop)
 
-Once Phases 1–4 produce real component scores, we'll evaluate the candidate
-methods on:
+Once Phases 1-4 produce real component scores for all 4 positions:
 
-1. **Interpretability** — can the user explain a player's Dynasty Value to
-   themselves in plain English?
-2. **Sensible disagreements with the old engine** — where v2 differs from
-   the legacy engine, are the differences defensible?
-3. **Robustness** — do small weight changes produce small ranking changes?
-   (sensitivity sweep — same tooling as
-   [`src/research/value_sensitivity.py`](../../src/research/value_sensitivity.py))
-4. **Fit to user gut take** — for a basket of named players, does the v2
-   ranking generally match the user's intuitive ranking?
+1. **Interpretability** — can the user explain a player's Dynasty Value in plain English?
+2. **Sensible disagreements with the legacy engine** — where v2 differs, are the differences defensible?
+3. **Robustness** — small weight changes → small ranking changes? (sensitivity sweep)
+4. **Fit to user gut take** — for a basket of named players, does v2 generally match intuitive rankings?
 
 ## Version history
 
 | Date | Method | Notes |
 |---|---|---|
-| 2026-06-27 | `uniform_weighted_sum` | Phase 0 placeholder; all components currently neutral 50 so this trivially returns 50 for everyone |
+| 2026-06-27 | `uniform_weighted_sum` | Phase 0 placeholder; all components neutral 50 so trivially returns 50 |
+| 2026-06-28 | Production × Team multiplier band locked at [0.875, 1.125] for WR | User override of data-driven recommendation [0.92, 1.08] — see note above |
 
-(Append new rows here as the method evolves.)
+(Append new rows as the methodology evolves.)
