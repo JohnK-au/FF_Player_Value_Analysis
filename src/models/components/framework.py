@@ -20,8 +20,8 @@ from pathlib import Path
 import pandas as pd
 
 from src.config import PROCESSED_DIR
+from src.data.cap import player_salaries_2026
 from src.data.contracts import build_2026_contracts
-from src.data.players import attributes_table
 from src.models.components import age, combine, injury, intangibles, position, production, team
 
 OUT_PATH = Path(PROCESSED_DIR) / "player_value_v2_2026.csv"
@@ -49,12 +49,21 @@ OUTPUT_COLS = (
 
 
 def _contract_roster() -> pd.DataFrame:
-    """Build the 2026 contract roster joined to player attributes."""
+    """Build the 2026 contract roster (active + extensions + rookies + practice squad)
+    joined to player attributes.
+
+    ``player_salaries_2026()`` already merges in espn_id, position_group, age,
+    years_exp via the attributes crosswalk (see ``src/data/cap.py``). For
+    ``years_2026`` we join from ``build_2026_contracts()`` (only active +
+    extensions carry an explicit term); rookie + practice-squad players default
+    to 1 (mirrors the legacy engine, see ``models/value.py::dynasty_value_table``).
+    """
+    sal = player_salaries_2026()
     contracts, _notes = build_2026_contracts()
-    attrs = attributes_table().drop_duplicates("player")
-    out = contracts.merge(attrs, on="player", how="left")
-    out["position_group"] = out["position_group"].fillna("Other")
-    out["dynasty_total_salary"] = out["salary_2026"] * out["years_2026"].clip(lower=1)
+    years = contracts[["team", "player", "years_2026"]].drop_duplicates(["team", "player"])
+    out = sal.merge(years, on=["team", "player"], how="left")
+    out["years_2026"] = out["years_2026"].fillna(1).clip(lower=1, upper=5).astype(int)
+    out["dynasty_total_salary"] = out["salary_2026"] * out["years_2026"]
     return out
 
 
