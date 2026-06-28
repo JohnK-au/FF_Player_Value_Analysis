@@ -24,7 +24,42 @@ Shared paths & league constants live in [`src/config.py`](src/config.py).
 - Public repo: `JohnK-au/FF_Player_Value_Analysis`
 - Language: Python 3 (a local `.venv` is used for dependencies)
 
-## Current state — as of 2026-05-27
+## Current state — as of 2026-06-28
+
+**Active branch:** `value-v2` (V2 component framework). V1 fair-value engine on
+`main` is shipped and powers the Streamlit app.
+
+### V2 six-component framework — Phase 4.5 v2 complete (commit `213c9db`)
+
+The six-component scoring framework is fully implemented for all four skill
+positions (WR/RB/QB/TE) on the FA-inclusive player universe. Master table:
+[`data/processed/player_value_v2_2026.csv`](data/processed/player_value_v2_2026.csv)
+(490 priced players: 155 rostered + 335 dynasty-league FAs).
+
+| Component | Status | Module / spec |
+| --- | --- | --- |
+| Production | ✅ live (per-position predicted PPG → [0, 100], recency-weighted) | [`src/models/components/production.py`](src/models/components/production.py) · [production.md](docs/methodology/production.md) |
+| Team | ✅ live (per-position empirical residual regression → multiplier band; WR 0.875-1.125, RB 0.85-1.15, TE 0.90-1.10, QB 0.95-1.05) | [`team.py`](src/models/components/team.py) · [team.md](docs/methodology/team.md) |
+| On-Field Value (OFV) | ✅ live (= Production × Team multiplier; written to master CSV) | [`combine.py`](src/models/components/combine.py) · [combination.md](docs/methodology/combination.md) |
+| Age | ✅ live (logistic decay sigmoid per position) | [`age.py`](src/models/components/age.py) · [age.md](docs/methodology/age.md) |
+| Injury | ✅ live (durability score from games played + IR designation) | [`injury.py`](src/models/components/injury.py) · [injury.md](docs/methodology/injury.md) |
+| Position | ✅ **v2 locked** — VORP-Deep Total Impact (PPG-based; RB=100, WR=93.1, TE=8.6, QB=0) | [`position.py`](src/models/components/position.py) · [position.md](docs/methodology/position.md) |
+| Intangibles | 🟡 stub at neutral 50 (reserved for trade-target / coaching-fit signal) | [`intangibles.py`](src/models/components/intangibles.py) · [intangibles.md](docs/methodology/intangibles.md) |
+| Dynasty Value combine | ✅ live (OFV 0.55 + Age 0.20 + Injury 0.15 + Position 0.05 + Intangibles 0.05) | [`combine.py`](src/models/components/combine.py) · [combination.md](docs/methodology/combination.md) |
+
+**Position component v2 design decision (2026-06-28):** v1 used OFV-based
+4-sub-metric composite, but OFV is normalized within position so cross-position
+M comparisons were meaningless (TE looked artificially scarce). v2 fix: re-derive
+M in absolute 2025 PPG with **VORP-Deep replacement** (avg PPG of ranks 3N+1 to
+4N — the "deep FA tier"), T-only weighting (T = M × S). Result: WR climbs from
+35→93 (now near-tied with RB), TE drops from 21→8.6 (its absolute PPG gap is
+genuinely small), QB stays at 0 (smallest gap × 1 slot). See
+[position.md](docs/methodology/position.md) for the full variant exploration and
+sub-metric snapshot. **Multi-tier (elite/startable/bench/reserve) concentration
+is deferred as an overlay/filter on top of results, NOT recomputed into the
+score** ([[multi-tier-position-overlay]]).
+
+### V1 engine (on main) — still powers the Streamlit app
 
 Both data sources are wired up and verified end-to-end:
 
@@ -221,18 +256,29 @@ sub-baseline 84%→34%, AJ Brown overpaid by 144 (fair 56), Jefferson by 132 (fa
 remaining single-season distortions (Jefferson's down 2025) are what the projection (S2–S4) fixes.
 
 **Immediate next steps when resuming (priority order):**
-1. **Use it and iterate.** All milestones (M1–M6) of the approved plan are merged to main.
-   Open `streamlit run src/app/Home.py`, explore real decisions, and feed back which
-   signals are good vs misleading. When a projection looks suspicious, trace the chain:
-   career stats in `training_frame.csv` → S2 context (`year_type`, `*_z`, `usage_trend`,
-   `qb_context`) → projection-model top drivers → pricing engine (consistency factor +
-   deep baseline + rate). See [[projection-investigation-pattern]].
-2. **Phase E — Roster optimization** (later): integer-cap-constrained keep/cut/tag/extend/
-   trade recommender beyond the heuristic on the Roster page.
-3. **Refinements as warranted**: more historical seasons (extend beyond 2022–25 to stabilize
+1. **Phase 5 — Dynasty Value combine workshop.** Now that all 6 components score real
+   values, revisit the combine method (currently OFV-weighted-sum with 0.55/0.20/0.15/0.05/0.05).
+   Tune weights, possibly revisit OFV multiplier bands, consider learned-weights or hybrid
+   multiplicative methods. Use the cross-position viz
+   ([`src/viz/cross_position_variants.py`](src/viz/cross_position_variants.py)) as a
+   weight-exploration template.
+2. **Phase 6 — Streamlit migration to V2.** Currently `src/app/_lib.py` reads V1's
+   `player_value_2026.csv`. Migrate pages to read `player_value_v2_2026.csv` instead,
+   updating column references (component scores + `on_field_value` + `dynasty_value` +
+   `contract_value` replacing V1's `prod_fair`/`market_fair`/`surplus_*` etc.).
+3. **Phase 7 — V1 archival.** After Streamlit is on V2: archive/remove
+   `src/models/value.py`, `src/viz/{value,value_interactive,summary}.py`, and
+   `data/processed/{player_value,fair_value}_2026.csv`.
+4. **Use it and iterate.** Open `streamlit run src/app/Home.py` (still V1 today),
+   explore real decisions, feed back signals. When a projection looks suspicious,
+   trace the chain: career stats in `training_frame.csv` → S2 context (`year_type`,
+   `*_z`, `usage_trend`, `qb_context`) → projection-model top drivers → pricing engine
+   (consistency factor + deep baseline + rate). See [[projection-investigation-pattern]].
+5. **Later refinements**: more historical seasons (extend beyond 2022–25 to stabilize
    projection + age curves); reconstruct weekly skill scoring from nflverse so the FA pool
    gets a real consistency factor; tune `RISK_LAMBDA`/`DEEP_FACTOR`/`DISCOUNT_RATE` from
-   real usage; trade reconciliation (active roster still lags trades).
+   real usage; trade reconciliation (active roster still lags trades); integer-cap-constrained
+   keep/cut/tag/extend/trade recommender; multi-tier position overlay UI ([[multi-tier-position-overlay]]).
 
 Minor open items: trade reconciliation (active roster lags trades; Extensions tab
 is authoritative); a couple of league-rule unknowns (extension salary-setting,

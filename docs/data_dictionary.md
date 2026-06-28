@@ -55,7 +55,7 @@ natively by HistGBR). NGS receiving starts 2016 (full coverage); NGS rushing
 | `data/processed/training_frame_extended.csv` | **5,598 skill player-seasons** (2016–25) = same shape as above but on the v2 extended window. PPG basis: nflverse `seasonal_data` + our [2025 scoring rules](../src/data/scoring.py) for 2016-2024; ESPN-reported for 2025. Used by the v2 component framework. |
 | `data/processed/player_dataset_2026.csv` | 180 contract players: salary + age + 2024/25 production |
 | `data/processed/fair_value_2026.csv` | 155 priced players, both lenses (`prod_fair`/`surplus_prod`, `market_fair`/`surplus_market`, `vor`, `downside`) |
-| `data/processed/player_value_v2_2026.csv` | v2 component framework master table (Phase 0 scaffold currently) — see [docs/methodology/](methodology/) |
+| `data/processed/player_value_v2_2026.csv` | **490 priced players** (155 rostered + 335 dynasty-league FAs) × all 6 V2 component scores + `on_field_value` + `dynasty_value` + `contract_value`. Built by [`src/models/components/framework.py`](../src/models/components/framework.py); see [docs/methodology/](methodology/) for the per-component spec. |
 
 ### Scoring reconstruction — for the extended training frame
 | Asset | Content |
