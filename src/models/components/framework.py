@@ -51,6 +51,11 @@ OUTPUT_COLS = (
 )
 
 
+_SOURCE_PRIORITY: dict[str, int] = {
+    "active": 0, "extension": 1, "rookie": 2, "practice_squad": 3,
+}
+
+
 def _contract_roster() -> pd.DataFrame:
     """Build the 2026 contract roster (active + extensions + rookies + practice squad)
     joined to player attributes.
@@ -63,6 +68,15 @@ def _contract_roster() -> pd.DataFrame:
     NFL team for the 2025 season (their modal posteam) is joined from the
     extended training frame so the master CSV carries an NFL-team column
     alongside the league team.
+
+    Deduplicates on ``espn_id`` (keeping the highest-priority source) to handle
+    contract-sheet typo variants of the same player. E.g., the Browns'
+    Shedeur Sanders is listed in the sheet both as "sheduer" (rookies section,
+    $10) and "Shadeur" (practice-squad section, $10). The crosswalk resolves
+    both name spellings to the same ``espn_id``, but `player_salaries_2026`
+    dedups only on ``(team, player)`` so both variants survive. We catch them
+    here by deduping on espn_id with source priority active > extension >
+    rookie > practice_squad.
     """
     sal = player_salaries_2026()
     contracts, _notes = build_2026_contracts()
@@ -70,6 +84,26 @@ def _contract_roster() -> pd.DataFrame:
     out = sal.merge(years, on=["team", "player"], how="left")
     out["years_2026"] = out["years_2026"].fillna(1).clip(lower=1, upper=5).astype(int)
     out["dynasty_total_salary"] = out["salary_2026"] * out["years_2026"]
+
+    # Drop rows without an espn_id (un-crosswalked players: kickers, HCs,
+    # any typo'd names that didn't resolve to a known player) -- can't score them
+    no_id = out["espn_id"].isna().sum()
+    out = out.dropna(subset=["espn_id"]).copy()
+
+    # Dedupe duplicates by espn_id (typo'd name variants, multi-section listings
+    # like Shedeur Sanders appearing as both "sheduer"/rookie and "Shadeur"/
+    # practice_squad). Keep the highest-priority source.
+    out["_priority"] = out["source"].map(_SOURCE_PRIORITY).fillna(99)
+    pre_dedup = len(out)
+    out = (
+        out.sort_values(["espn_id", "_priority"])
+        .drop_duplicates(subset=["espn_id"], keep="first")
+        .drop(columns="_priority")
+        .reset_index(drop=True)
+    )
+    dups_dropped = pre_dedup - len(out)
+    if no_id or dups_dropped:
+        print(f"  _contract_roster: dropped {no_id} no-espn_id rows + {dups_dropped} espn_id duplicates")
 
     # NFL team for the latest fully-completed NFL season (modal posteam)
     ext = extended_training_frame()
