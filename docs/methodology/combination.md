@@ -79,11 +79,12 @@ design preference.
 
 | Method | Status | Description |
 |---|---|---|
-| `uniform_weighted_sum` | **v1 default** | Each component weight = 1/6; output = average. Interpretable placeholder. |
-| `weighted_sum` | planned | Human-set or learned per-component weights summing to 1 |
-| `multiplicative` | planned | Production base × multiplier in [low, high] from each other component |
+| `ofv_weighted_sum` | **current default** | Weighted sum using **On-Field Value** (which already encodes Production × Team) plus the 4 off-field components. Default weights: OFV 0.55, Age 0.20, Injury 0.15, Position 0.05, Intangibles 0.05. User-driven: chosen after the uniform-1/6 placeholder was over-diluting OFV. |
+| `uniform_weighted_sum` | legacy | Each of the 6 raw components weighted 1/6. Was the Phase 0 placeholder; kept for back-compat / comparison. |
+| `weighted_sum` | planned | Human-set or learned per-raw-component weights summing to 1 |
+| `multiplicative` | planned | OFV base × multiplier in [low, high] from each off-field component |
 | `learned` | planned | Weights learned from an objective (user rankings / historical fantasy outcomes / teacher signal). User leans toward this for the final method. |
-| `hybrid` | planned | Mixed: Production + Age weighted sum forms the base; Team / Injury / Position / Intangibles emit multipliers |
+| `hybrid` | planned | Mixed: OFV + Age weighted sum forms the base; Injury / Position / Intangibles emit multipliers |
 
 ## Decision criteria (for Phase 5 workshop)
 
@@ -101,5 +102,9 @@ Once Phases 1-4 produce real component scores for all 4 positions:
 | 2026-06-27 | `uniform_weighted_sum` | Phase 0 placeholder; all components neutral 50 so trivially returns 50 |
 | 2026-06-28 | On-Field Value (= Production × Team) multiplier band locked at [0.875, 1.125] for WR | User override of data-driven recommendation [0.92, 1.08] — see note above |
 | 2026-06-28 | Name locked: "On-Field Value" for the Production × Team sub-value | Reads cleanly against Age/Injury/Position/Intangibles (off-field dimensions); appears as `on_field_value` column in the master CSV |
+| 2026-06-28 | Dynasty Value combine swapped from `uniform_weighted_sum` to `ofv_weighted_sum` (OFV 0.55 / Age 0.20 / Injury 0.15 / Position 0.05 / Intangibles 0.05) | User feedback during Phase 1F WR-table review: uniform 1/6 was over-diluting OFV; players with low Production but max Age + Injury + Team boosts (e.g. Xavier Worthy) were ranking too high. New default makes OFV the dominant signal. Weights are placeholder defaults; final tuning is a Phase 5 task once all 4 positions have full components. |
+| 2026-06-28 | RB multiplier band locked at [0.85, 1.15] (±15%) | Phase 2: data-driven from RB Team residual regression. Max worst-to-best PPG swing for RB Team is ~1.85 PPG (vs ~1 PPG for WR), so band set wider than WR's [0.875, 1.125] to reflect stronger empirical effect. |
+| 2026-06-28 | TE multiplier band locked at [0.90, 1.10] (±10%) | Phase 3: TE Team residual regression R² only 0.23% (5x weaker than WR's 1.18%). Per user, band set TIGHTER than WR/RB because the SIGNAL strength is weaker, even though the relative PPG effect magnitude (~25% on 5-7 PPG TE) is comparable to RB. |
+| 2026-06-28 | QB multiplier band locked at [0.95, 1.05] (±5%) | Phase 4: TIGHTEST of all positions. QB Team residual regression OOF R² was NEGATIVE — team features genuinely don't add signal beyond the QB's own stats (cpoe/passing_epa absorb the supporting-cast effects). Path A "minimal QB Team" picked over multi-feature variants to avoid manufacturing noise. Only feature kept: `team_pass_rate` (sole one with non-trivial standalone signal). |
 
 (Append new rows as the methodology evolves.)
