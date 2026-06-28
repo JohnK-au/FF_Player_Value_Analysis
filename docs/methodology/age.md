@@ -99,7 +99,7 @@ forward window?
 - **Phase 1E** ✅ — WR Age sigmoid (center 28, steepness 2); empirically validated for dynasty horizon
 - **Phase 2** ✅ — **RB Age sigmoid (center 25, steepness 2.5)**: empirically derived via 3-year forward cumulative PPG analysis. RB cliff is much sharper than WR — median future-3yr PPG drops from 16 (age 22) → 4 (age 26) → 0 (age 30+). Validation: Pearson +0.32 vs WR's +0.18, OOF R² 0.10 vs WR's 0.029 — **RB age signal is ~3× stronger** than WR.
 - **Phase 3** ✅ — **TE Age sigmoid (center 27, steepness 3.0)**: **hand-tuned**. Empirical analysis revealed a U-shape (high young → valley at age 24 → recovery at 26-27 → decline 28+) which a monotonic sigmoid can't fit. User judged the dip a coincidence; hand-tuned smoother decline reflects TE prime extending to ~28 (Kelce-era / elite-aging tail). Steepness=3.0 makes the cliff gentler than WR/RB (TE careers can extend longer).
-- **Phase 4**: QB — later center (e.g., 32-33) due to longer prime
+- **Phase 4** ✅ — **QB Age sigmoid (center 33, steepness 4.0)**: hand-tuned. QB careers extend latest of any position (Brady 45, Brees 41, Manning 39, Rodgers 41+). Empirical age curve had wild noise from elite-aging extremes that made grid-search unreliable; chose smoother decline centered at 33 (decline midpoint) with gentle steepness 4.0 reflecting the long QB prime. Score samples: age 22 → 94, age 28 → 78, age 32 → 56, age 33 → 50, age 35 → 38, age 38 → 22.
 - **Later**: elite-aging detector + parameter re-tuning from richer multi-position data
 
 ## TODOs

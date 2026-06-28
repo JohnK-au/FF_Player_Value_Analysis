@@ -59,7 +59,12 @@ MULTIPLIER_BANDS: dict[str, tuple[float, float]] = {
     # (~25% on a 5-7 PPG TE) but the SIGNAL is much weaker, so band reflects
     # signal strength rather than effect magnitude.
     "TE": (0.90, 1.10),
-    "QB": (1.0, 1.0),      # Phase 4
+    # QB Phase 4: TIGHTEST of all positions. QB Team residual regression
+    # OOF R^2 was NEGATIVE -- team features genuinely don't add signal
+    # beyond the QB's own stats. Only team_pass_rate has any standalone
+    # signal (R^2 1.14% alone). Path A "minimal QB Team" picked over a
+    # multi-feature variant to avoid manufacturing noise.
+    "QB": (0.95, 1.05),
 }
 
 

@@ -40,7 +40,12 @@ AGE_PARAMS: dict[str, dict[str, float]] = {
     # coincidence and chose hand-tuned smoother decline reflecting TE prime
     # extending to ~28 (Kelce-era TEs, elite-aging tail).
     "TE": {"center": 27.0, "steepness": 3.0},
-    # QB in Phase 4
+    # QB Phase 4: hand-tuned. QB careers extend latest of any position
+    # (Brady 45, Brees 41, Manning 39, Rodgers 41). The empirical age curve
+    # has wild noise from elite-aging extremes; user chose smoother decline
+    # centered later. Steepness=4 gives a gentle cliff (longer prime than
+    # WR/RB/TE).
+    "QB": {"center": 33.0, "steepness": 4.0},
 }
 
 

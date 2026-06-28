@@ -47,7 +47,7 @@ RECOVERY_K_BY_POSITION: dict[str, float] = {
     "WR": 3.0,
     "RB": 3.0,
     "TE": 2.5,  # user: TE injury impact slightly less than WR/RB
-    "QB": 3.0,  # Phase 4 placeholder
+    "QB": 3.0,  # Phase 4
 }
 RECOVERY_K = 3.0  # legacy default (back-compat); position-specific lookup preferred
 
@@ -123,7 +123,7 @@ def _lookup_injury_value(espn_id, position: str = "WR",
     return float(max(0.0, min(100.0, availability - recovery_penalty)))
 
 
-SCORED_POSITIONS: tuple[str, ...] = ("WR", "RB", "TE")
+SCORED_POSITIONS: tuple[str, ...] = ("WR", "RB", "TE", "QB")
 
 
 def _score_position(players: pd.DataFrame, position: str) -> pd.DataFrame:
@@ -141,7 +141,7 @@ def score(players: pd.DataFrame, position: str) -> pd.DataFrame:
     if position in SCORED_POSITIONS:
         return _score_position(players, position)
     out = players.copy()
-    out["injury_value"] = NEUTRAL  # QB lands in Phase 4
+    out["injury_value"] = NEUTRAL
     return out
 
 

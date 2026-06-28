@@ -61,12 +61,28 @@ RB_FEATURES: tuple[str, ...] = (
     "forty", "vertical", "broad_jump",
 )
 
+# QB Production features (Phase 4). pressure_pct DROPPED per user: it was
+# originally proposed for Production, then moved to Team for OL-attribution,
+# but empirical residual regression showed it as unstable noise at the team
+# level too (CV 66, near-zero coef). Net: pressure_pct unused in QB.
+# Also note: snap_pct dropped (QBs play essentially all snaps when starting,
+# very low variance for filtered-by-games_played seasons).
+QB_FEATURES: tuple[str, ...] = (
+    # passing efficiency / accuracy / decision-making
+    "passing_epa", "cpoe", "on_tgt_pct", "adot",
+    # rushing (mobile QB premium)
+    "carries", "rushing_epa",
+    # draft + combine
+    "draft_round", "draft_pick", "draft_value", "undrafted",
+    "forty", "vertical", "broad_jump",
+)
+
 POSITION_FEATURES: dict[str, tuple[str, ...]] = {
     "WR": WR_FEATURES,
     "RB": RB_FEATURES,
     # TE Phase 3: TEs are receivers; reuse the WR feature set unchanged.
     "TE": WR_FEATURES,
-    # QB in Phase 4
+    "QB": QB_FEATURES,
 }
 
 # Geometric recency decay applied to per-season scores. TODO: tune empirically.

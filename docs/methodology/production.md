@@ -28,7 +28,7 @@ owned by the [Age component](age.md); offensive environment is owned by the
 |---|---|
 | **WR / TE** | `target_share`, `wopr`, `racr`, `snap_pct`, `avg_separation`, `yac_above_expected`, `receiving_epa`, `adot`, `catch_pct` |
 | **RB** (Phase 2) | `carries`, `snap_pct`, `target_share`, `receptions`, `rushing_epa`, `ryoe_per_att`, `time_to_los`, `yac_att`, `receiving_epa`, `catch_pct`. **Dropped per user**: `ybc_att` (relabelled as O-line proxy → Team component) |
-| **QB** | `passing_epa`, `cpoe`, `on_tgt_pct`, `pressure_pct`, `passing_yards/game`, `passing_tds/game`, `interceptions/game`, `carries`, `rushing_epa` (mobile-QB premium), `rushing_yards/game` |
+| **QB** (Phase 4) | `passing_epa`, `cpoe`, `on_tgt_pct`, `adot`, `carries`, `rushing_epa`, draft + combine. **Dropped per user**: `pressure_pct` (moved to Team for OL attribution, then dropped from Team too after empirical regression showed it as noise) |
 
 ### Clearly OUT
 - **Team-owned** (→ Team component): `team_pass_epa`, `team_cpoe`, `team_rush_epa`, `team_pass_rate`
@@ -78,7 +78,7 @@ purposes.
 - **Phase 1B** ✅ — WR Production model: OOF R² 0.816, MAE 1.89 PPG
 - **Phase 2** ✅ — RB Production model: OOF R² **0.829**, MAE **1.83 PPG** (slightly stronger than WR)
 - **Phase 3** ✅ — TE Production model: reuses WR feature set unchanged (TEs are receivers)
-- **Phase 4** — QB with position-specific feature set
+- **Phase 4** ✅ — QB Production model: OOF R² **0.688**, MAE 4.28 PPG. Lower than other positions because of fewer samples + higher variance scale (QBs have higher PPG range). `pressure_pct` dropped after user moved it to Team and the empirical regression showed it as unstable noise at the team level too.
 - **Later** — enable subjective production override; tune the recency-decay weights empirically (see TODOs)
 
 ## TODOs (revisit after first model output)

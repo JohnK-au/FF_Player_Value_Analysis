@@ -51,6 +51,15 @@ RB_W_YBC_ATT = 1.0
 TE_W_PASS_RATE = 0.52
 TE_W_CPOE = 0.48
 
+# --- QB weights / features --------------------------------------------------
+# Path A "minimal QB Team": single feature (team_pass_rate). User-chosen
+# after empirical residual regression showed that no team feature has
+# meaningful signal for QB residual (OOF R^2 was negative). team_pass_rate
+# was the only feature with non-trivial standalone signal (R^2 1.14%) and
+# stable sign. Other candidates (team_avg_separation, team_avg_yac,
+# team_sack_rate, team_pressure_pct) were noise.
+QB_W_PASS_RATE = 1.0
+
 
 def _top2_target_share_excl_self(ext: pd.DataFrame) -> dict[tuple, float]:
     """Per-(team, season, espn_id): sum of top 2 target shares from OTHER team-mates."""
@@ -292,10 +301,58 @@ def _lookup_te_team_value(espn_id, season: int = CURRENT_SEASON) -> float:
     return float(max(0.0, min(100.0, val)))
 
 
+@lru_cache(maxsize=1)
+def _qb_team_artifacts() -> dict:
+    """Cached QB artifacts (Phase 4). Path A minimal: team_pass_rate only."""
+    ext = extended_training_frame()
+    qb = ext[ext["position_group"] == "QB"]
+
+    # Per-(espn_id, season) team_pass_rate lookup
+    player_team_ctx: dict[tuple, dict] = {}
+    for _, r in qb.iterrows():
+        if pd.isna(r.get("espn_id")) or pd.isna(r.get("team")):
+            continue
+        if pd.isna(r.get("team_pass_rate")):
+            continue
+        player_team_ctx[(int(r["espn_id"]), int(r["season"]))] = {
+            "team": r["team"],
+            "team_pass_rate": float(r["team_pass_rate"]),
+        }
+
+    # Per-season min/max for [0, 100] mapping
+    season_records: dict[int, list[float]] = {}
+    for (espn_id, season), ctx in player_team_ctx.items():
+        season_records.setdefault(season, []).append(ctx["team_pass_rate"])
+    season_bounds = {
+        s: {"min": min(vs), "max": max(vs)} for s, vs in season_records.items()
+    }
+    return {
+        "player_team_ctx": player_team_ctx,
+        "season_bounds": season_bounds,
+    }
+
+
+def _lookup_qb_team_value(espn_id, season: int = CURRENT_SEASON) -> float:
+    """QB team_value = season-normalised team_pass_rate (single feature)."""
+    art = _qb_team_artifacts()
+    if pd.isna(espn_id):
+        return NEUTRAL
+    espn_id = int(espn_id)
+    ctx = art["player_team_ctx"].get((espn_id, season))
+    if ctx is None:
+        return NEUTRAL
+    bounds = art["season_bounds"].get(season)
+    if not bounds or bounds["max"] == bounds["min"]:
+        return NEUTRAL
+    val = 100.0 * (ctx["team_pass_rate"] - bounds["min"]) / (bounds["max"] - bounds["min"])
+    return float(max(0.0, min(100.0, val)))
+
+
 _LOOKUPS: dict[str, Callable] = {
     "WR": _lookup_wr_team_value,
     "RB": _lookup_rb_team_value,
     "TE": _lookup_te_team_value,
+    "QB": _lookup_qb_team_value,
 }
 
 
