@@ -34,7 +34,13 @@ AGE_PARAMS: dict[str, dict[str, float]] = {
     # center=25, steepness=2.5. Validation: Pearson +0.32, OOF R^2 0.10
     # (3x WR's age signal). See docs/methodology/age.md.
     "RB": {"center": 25.0, "steepness": 2.5},
-    # QB / TE in Phases 3-4
+    # TE Phase 3: hand-tuned. The empirical median-PPG-by-age curve has a
+    # U-shape (high young -> valley at 24 -> recovery 26-27 -> decline 28+)
+    # which a monotonic sigmoid can't fit cleanly; user judged the dip a
+    # coincidence and chose hand-tuned smoother decline reflecting TE prime
+    # extending to ~28 (Kelce-era TEs, elite-aging tail).
+    "TE": {"center": 27.0, "steepness": 3.0},
+    # QB in Phase 4
 }
 
 

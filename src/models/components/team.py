@@ -43,6 +43,14 @@ WR_W_TOP_2_EXCL_SELF = -0.25
 # signal; here for symmetry with WR composite structure.
 RB_W_YBC_ATT = 1.0
 
+# --- TE weights / features --------------------------------------------------
+# Normalized empirical weights from TE residual regression. Dropped:
+# team_pass_epa (near-zero contribution, unstable) and top_2_excl_self
+# (near-zero R^2, unstable). team_cpoe and team_pass_rate are the two
+# survivors with stable + positive coefs.
+TE_W_PASS_RATE = 0.52
+TE_W_CPOE = 0.48
+
 
 def _top2_target_share_excl_self(ext: pd.DataFrame) -> dict[tuple, float]:
     """Per-(team, season, espn_id): sum of top 2 target shares from OTHER team-mates."""
@@ -220,9 +228,74 @@ def _lookup_rb_team_value(espn_id, season: int = CURRENT_SEASON) -> float:
     return float(max(0.0, min(100.0, val)))
 
 
+@lru_cache(maxsize=1)
+def _te_team_artifacts() -> dict:
+    """Cached TE artifacts (Phase 3). Uses team_pass_rate + team_cpoe only."""
+    ext = extended_training_frame()
+    te = ext[ext["position_group"] == "TE"]
+
+    player_team_ctx: dict[tuple, dict] = {}
+    for _, r in te.iterrows():
+        if pd.isna(r.get("espn_id")) or pd.isna(r.get("team")):
+            continue
+        if pd.isna(r.get("team_pass_rate")) or pd.isna(r.get("team_cpoe")):
+            continue
+        player_team_ctx[(int(r["espn_id"]), int(r["season"]))] = {
+            "team": r["team"],
+            "team_pass_rate": float(r["team_pass_rate"]),
+            "team_cpoe": float(r["team_cpoe"]),
+        }
+
+    rows = []
+    for (espn_id, season), ctx in player_team_ctx.items():
+        rows.append({
+            "season": season,
+            "team_pass_rate": ctx["team_pass_rate"],
+            "team_cpoe": ctx["team_cpoe"],
+        })
+    feat_df = pd.DataFrame(rows)
+    cols = ("team_pass_rate", "team_cpoe")
+    z_stats = {c: {"mean": float(feat_df[c].mean()), "std": float(feat_df[c].std())} for c in cols}
+
+    def _composite(rate, cpoe):
+        pr_z = (rate - z_stats["team_pass_rate"]["mean"]) / z_stats["team_pass_rate"]["std"]
+        co_z = (cpoe - z_stats["team_cpoe"]["mean"]) / z_stats["team_cpoe"]["std"]
+        return TE_W_PASS_RATE * pr_z + TE_W_CPOE * co_z
+
+    feat_df["composite"] = feat_df.apply(
+        lambda r: _composite(r["team_pass_rate"], r["team_cpoe"]), axis=1)
+    season_bounds = {
+        int(s): {"min": float(g["composite"].min()), "max": float(g["composite"].max())}
+        for s, g in feat_df.groupby("season")
+    }
+    return {
+        "player_team_ctx": player_team_ctx,
+        "z_stats": z_stats,
+        "season_bounds": season_bounds,
+        "composite_fn": _composite,
+    }
+
+
+def _lookup_te_team_value(espn_id, season: int = CURRENT_SEASON) -> float:
+    art = _te_team_artifacts()
+    if pd.isna(espn_id):
+        return NEUTRAL
+    espn_id = int(espn_id)
+    ctx = art["player_team_ctx"].get((espn_id, season))
+    if ctx is None:
+        return NEUTRAL
+    composite = art["composite_fn"](ctx["team_pass_rate"], ctx["team_cpoe"])
+    bounds = art["season_bounds"].get(season)
+    if not bounds or bounds["max"] == bounds["min"]:
+        return NEUTRAL
+    val = 100.0 * (composite - bounds["min"]) / (bounds["max"] - bounds["min"])
+    return float(max(0.0, min(100.0, val)))
+
+
 _LOOKUPS: dict[str, Callable] = {
     "WR": _lookup_wr_team_value,
     "RB": _lookup_rb_team_value,
+    "TE": _lookup_te_team_value,
 }
 
 

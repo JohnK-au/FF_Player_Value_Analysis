@@ -54,8 +54,12 @@ MULTIPLIER_BANDS: dict[str, tuple[float, float]] = {
     # RB Phase 2: data-driven empirical effect ~22% (max worst-best PPG swing ~1.85 PPG
     # on ~8.5 PPG mean RB). Set wider than WR to reflect the stronger empirical effect.
     "RB": (0.85, 1.15),
-    "QB": (1.0, 1.0),      # Phase 3
-    "TE": (1.0, 1.0),      # Phase 4
+    # TE Phase 3: TIGHTER than WR per user. Residual regression OOF R^2 only
+    # 0.23% -- 5x weaker than WR's 1.18%. The relative PPG effect is comparable
+    # (~25% on a 5-7 PPG TE) but the SIGNAL is much weaker, so band reflects
+    # signal strength rather than effect magnitude.
+    "TE": (0.90, 1.10),
+    "QB": (1.0, 1.0),      # Phase 4
 }
 
 

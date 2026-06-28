@@ -39,9 +39,17 @@ LATEST_SEASON = 2025
 # Most-recent-first weights applied across the last 3 seasons of NFL history.
 AVAILABILITY_WEIGHTS = (1.0, 0.5, 0.25)
 
-# Recovery penalty (TODO: re-tune empirically later)
+# Recovery penalty (TODO: re-tune empirically later).
+# Threshold is shared across positions (4 games = normal NFL wear-and-tear);
+# K varies per user judgment that some positions are more injury-tolerant.
 RECOVERY_THRESHOLD = 4  # games_missed_last_season this many or fewer -> no penalty
-RECOVERY_K = 3.0        # injury_value points per excess game missed
+RECOVERY_K_BY_POSITION: dict[str, float] = {
+    "WR": 3.0,
+    "RB": 3.0,
+    "TE": 2.5,  # user: TE injury impact slightly less than WR/RB
+    "QB": 3.0,  # Phase 4 placeholder
+}
+RECOVERY_K = 3.0  # legacy default (back-compat); position-specific lookup preferred
 
 
 def _max_games(season: int) -> int:
@@ -68,8 +76,12 @@ def _player_games() -> tuple[dict, dict]:
     return games_lookup, dict(seasons_per_player)
 
 
-def _lookup_injury_value(espn_id, latest_season: int = LATEST_SEASON) -> float:
-    """Per-player injury_value [0, 100]; NEUTRAL when player has no NFL history."""
+def _lookup_injury_value(espn_id, position: str = "WR",
+                         latest_season: int = LATEST_SEASON) -> float:
+    """Per-player injury_value [0, 100]; NEUTRAL when player has no NFL history.
+
+    ``position`` controls the recovery-penalty K (RECOVERY_K_BY_POSITION).
+    """
     if pd.isna(espn_id):
         return NEUTRAL
     espn_id = int(espn_id)
@@ -80,12 +92,9 @@ def _lookup_injury_value(espn_id, latest_season: int = LATEST_SEASON) -> float:
         return NEUTRAL  # no NFL history at all -> rookie / never played
     first_nfl_season = min(player_seasons)
     if first_nfl_season > latest_season:
-        return NEUTRAL  # appears only AFTER latest_season -- shouldn't happen, defensive
+        return NEUTRAL
 
-    # Walk back from latest_season, gathering up to 3 seasons. Skip pre-rookie
-    # seasons (player wasn't in NFL yet). Missing data within their career
-    # window is treated as games=0 (injury assumption).
-    seasons_data: list[tuple[int, int, float]] = []  # (season, games, weight)
+    seasons_data: list[tuple[int, int, float]] = []
     for offset, weight in enumerate(AVAILABILITY_WEIGHTS):
         s = latest_season - offset
         if s < first_nfl_season:
@@ -96,46 +105,43 @@ def _lookup_injury_value(espn_id, latest_season: int = LATEST_SEASON) -> float:
     if not seasons_data:
         return NEUTRAL
 
-    # Weighted availability
     weighted_games = sum(g * w for _, g, w in seasons_data)
     weighted_max = sum(_max_games(s) * w for s, _, w in seasons_data)
     if weighted_max == 0:
         return NEUTRAL
     availability = 100.0 * weighted_games / weighted_max
 
-    # Acute recovery penalty -- ONLY from the latest season's games-missed
     latest_entry = next(((s, g) for s, g, _ in seasons_data if s == latest_season), None)
+    k = RECOVERY_K_BY_POSITION.get(position, RECOVERY_K)
     if latest_entry is None:
-        recovery_penalty = 0.0  # player wasn't in NFL last season at all
+        recovery_penalty = 0.0
     else:
         s, latest_games = latest_entry
         games_missed = max(0, _max_games(s) - latest_games)
-        recovery_penalty = max(0.0, RECOVERY_K * (games_missed - RECOVERY_THRESHOLD))
+        recovery_penalty = max(0.0, k * (games_missed - RECOVERY_THRESHOLD))
 
     return float(max(0.0, min(100.0, availability - recovery_penalty)))
 
 
-SCORED_POSITIONS: tuple[str, ...] = ("WR", "RB")
+SCORED_POSITIONS: tuple[str, ...] = ("WR", "RB", "TE")
 
 
-def _score_position(players: pd.DataFrame) -> pd.DataFrame:
-    """Position-agnostic Injury scoring -- same formula across positions.
-
-    Position-specific params (THRESHOLD, K, recency weights) can diverge later
-    if validation shows different attrition profiles per position; for v1
-    same params for WR and RB.
-    """
+def _score_position(players: pd.DataFrame, position: str) -> pd.DataFrame:
+    """Injury scoring -- same formula across positions, position-specific K."""
     out = players.copy()
-    out["injury_value"] = [_lookup_injury_value(eid, LATEST_SEASON) for eid in out["espn_id"]]
+    out["injury_value"] = [
+        _lookup_injury_value(eid, position, LATEST_SEASON)
+        for eid in out["espn_id"]
+    ]
     return out
 
 
 def score(players: pd.DataFrame, position: str) -> pd.DataFrame:
     """Injury score per player in [0, 100]."""
     if position in SCORED_POSITIONS:
-        return _score_position(players)
+        return _score_position(players, position)
     out = players.copy()
-    out["injury_value"] = NEUTRAL  # QB / TE land in Phases 3-4
+    out["injury_value"] = NEUTRAL  # QB lands in Phase 4
     return out
 
 

@@ -64,7 +64,9 @@ RB_FEATURES: tuple[str, ...] = (
 POSITION_FEATURES: dict[str, tuple[str, ...]] = {
     "WR": WR_FEATURES,
     "RB": RB_FEATURES,
-    # QB, TE in Phases 3-4
+    # TE Phase 3: TEs are receivers; reuse the WR feature set unchanged.
+    "TE": WR_FEATURES,
+    # QB in Phase 4
 }
 
 # Geometric recency decay applied to per-season scores. TODO: tune empirically.

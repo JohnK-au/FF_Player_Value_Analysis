@@ -97,10 +97,9 @@ forward window?
 ## Phase plan
 
 - **Phase 1E** ✅ — WR Age sigmoid (center 28, steepness 2); empirically validated for dynasty horizon
-- **Phase 2** ✅ — **RB Age sigmoid (center 25, steepness 2.5)**: empirically derived via 3-year forward cumulative PPG analysis (RB careers are shorter, so 3-yr horizon better captures "remaining productive runway" than the 4-yr horizon used for WR). RB cliff is much sharper than WR — median future-3yr PPG drops from 16 (age 22) → 4 (age 26) → 0 (age 30+). Validation: Pearson +0.32 (vs WR's +0.18), OOF R² 0.10 (vs WR's 0.029) — **RB age signal is ~3× stronger** than WR.
-- **Phase 3-4**: QB / TE
-  - QB: later center (e.g., 32-33) due to longer prime
-  - TE: likely between WR and QB
+- **Phase 2** ✅ — **RB Age sigmoid (center 25, steepness 2.5)**: empirically derived via 3-year forward cumulative PPG analysis. RB cliff is much sharper than WR — median future-3yr PPG drops from 16 (age 22) → 4 (age 26) → 0 (age 30+). Validation: Pearson +0.32 vs WR's +0.18, OOF R² 0.10 vs WR's 0.029 — **RB age signal is ~3× stronger** than WR.
+- **Phase 3** ✅ — **TE Age sigmoid (center 27, steepness 3.0)**: **hand-tuned**. Empirical analysis revealed a U-shape (high young → valley at age 24 → recovery at 26-27 → decline 28+) which a monotonic sigmoid can't fit. User judged the dip a coincidence; hand-tuned smoother decline reflects TE prime extending to ~28 (Kelce-era / elite-aging tail). Steepness=3.0 makes the cliff gentler than WR/RB (TE careers can extend longer).
+- **Phase 4**: QB — later center (e.g., 32-33) due to longer prime
 - **Later**: elite-aging detector + parameter re-tuning from richer multi-position data
 
 ## TODOs

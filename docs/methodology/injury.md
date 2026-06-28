@@ -117,7 +117,8 @@ top.
 
 - **Phase 1E** ✅ — WR Injury implemented + validated
 - **Phase 2** ✅ — RB uses **same formula and parameters as WR** (THRESHOLD=4, K=3, weights [1.0, 0.5, 0.25]). May need to tune for RB's higher attrition profile in a later iteration; v1 keeps it position-agnostic for simplicity.
-- **Phases 3-4** — QB / TE
+- **Phase 3** ✅ — TE uses same formula + threshold, but **gentler K=2.5** (vs 3.0 for WR/RB) per user judgment that injury impact for TEs is slightly less than receivers/runners. Implementation lookup: `RECOVERY_K_BY_POSITION` dict in `src/models/components/injury.py`.
+- **Phase 4** — QB
 - **v2** — real nflverse injury data; severity-weighted recovery penalty
 
 ## TODOs

@@ -77,7 +77,8 @@ purposes.
 - **Phase 1A** ✅ — extend training data to 2016-2025; build scoring reconstruction
 - **Phase 1B** ✅ — WR Production model: OOF R² 0.816, MAE 1.89 PPG
 - **Phase 2** ✅ — RB Production model: OOF R² **0.829**, MAE **1.83 PPG** (slightly stronger than WR)
-- **Phases 3-4** — QB / TE with position-specific feature sets
+- **Phase 3** ✅ — TE Production model: reuses WR feature set unchanged (TEs are receivers)
+- **Phase 4** — QB with position-specific feature set
 - **Later** — enable subjective production override; tune the recency-decay weights empirically (see TODOs)
 
 ## TODOs (revisit after first model output)
