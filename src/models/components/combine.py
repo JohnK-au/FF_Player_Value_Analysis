@@ -7,14 +7,17 @@ Two distinct combine operations:
    Position-aware multiplier band; WR locked at [0.875, 1.125] (see
    docs/methodology/combination.md for the rationale + user override).
 
-2. **Dynasty Value** (Phase 5 final): folds all 6 component scores. Pluggable
-   interface; v1 default = uniform_weighted_sum. Final method workshopped in
-   Phase 5 after all 4 positions have full component scores.
+2. **Dynasty Value** (Phase 5 final): folds On-Field Value + the 4 off-field
+   components (Age / Injury / Position / Intangibles). Pluggable interface.
+   Current default: `ofv_weighted_sum` — weighted sum prioritising
+   On-Field Value. Set after user feedback that the prior uniform-1/6
+   combine was over-diluting OFV.
 """
 from __future__ import annotations
 
 import pandas as pd
 
+# Original 6 raw component cols (kept for back-compat with uniform_weighted_sum).
 COMPONENT_COLS = (
     "production_value",
     "age_value",
@@ -24,11 +27,28 @@ COMPONENT_COLS = (
     "intangibles_value",
 )
 
-# Position-aware Production x Team multiplier bands.
-# Each is (multiplier_lo, multiplier_hi) applied as:
-#   multiplier = lo + (team_value / 100) * (hi - lo)
-# Only WR has a tuned band (Phase 1D). Other positions default to (1.0, 1.0) =
-# pass-through (no team effect) until their components land in Phases 2-4.
+# OFV-centric combine inputs: On-Field Value REPLACES the raw Production +
+# Team columns (it already encodes their multiplicative combination via the
+# Phase 1D multiplier).
+OFV_COMBINE_COLS = (
+    "on_field_value",
+    "age_value",
+    "injury_value",
+    "position_value",
+    "intangibles_value",
+)
+
+# Default OFV-weighted-sum weights. TODO Phase 5: empirically tune.
+DEFAULT_OFV_WEIGHTS: dict[str, float] = {
+    "on_field_value": 0.55,
+    "age_value": 0.20,
+    "injury_value": 0.15,
+    "position_value": 0.05,
+    "intangibles_value": 0.05,
+}
+
+# Position-aware Production x Team multiplier bands (for on_field_value).
+# WR locked Phase 1D; other positions default to pass-through.
 MULTIPLIER_BANDS: dict[str, tuple[float, float]] = {
     "WR": (0.875, 1.125),  # USER OVERRIDE of data-driven [0.92, 1.08] -- see combination.md
     "RB": (1.0, 1.0),      # Phase 2
@@ -49,12 +69,7 @@ def on_field_value(
     team_value: pd.Series,
     position: pd.Series,
 ) -> pd.Series:
-    """Per-player On-Field Value = Production x Team multiplier.
-
-    Captures "what the player delivers on the field given their environment."
-    Phase 1D for WR; other positions pass through (multiplier = 1.0) until
-    Phases 2-4 add their bands.
-    """
+    """Per-player On-Field Value = Production x Team multiplier."""
     multiplier = pd.Series(
         [_team_multiplier(tv, pos) for tv, pos in zip(team_value, position)],
         index=production_value.index,
@@ -63,20 +78,42 @@ def on_field_value(
 
 
 def uniform_weighted_sum(components: pd.DataFrame) -> pd.Series:
-    """Average of the 6 component scores. Each weight = 1/6."""
+    """Average of the 6 raw component scores. Each weight = 1/6. Legacy."""
     return components[list(COMPONENT_COLS)].mean(axis=1)
 
 
+def ofv_weighted_sum(
+    components: pd.DataFrame,
+    weights: dict[str, float] | None = None,
+) -> pd.Series:
+    """OFV-centric weighted sum (default).
+
+    Uses On-Field Value (which already encodes Production x Team) plus the 4
+    off-field components (Age, Injury, Position, Intangibles). Default weights
+    prioritise OFV (0.55) so it isn't diluted by stub / lower-signal components.
+    """
+    w = weights or DEFAULT_OFV_WEIGHTS
+    total = sum(w.values())
+    if abs(total - 1.0) > 1e-6:
+        # Auto-normalise so weights always sum to 1
+        w = {k: v / total for k, v in w.items()}
+    return sum(components[col] * weight for col, weight in w.items())
+
+
 _METHODS = {
-    "uniform_weighted_sum": uniform_weighted_sum,
+    "uniform_weighted_sum": (uniform_weighted_sum, COMPONENT_COLS),
+    "ofv_weighted_sum": (ofv_weighted_sum, OFV_COMBINE_COLS),
 }
 
+DEFAULT_METHOD = "ofv_weighted_sum"
 
-def combine(components: pd.DataFrame, method: str = "uniform_weighted_sum") -> pd.Series:
-    """Combine the 6 component columns into a Dynasty Value Series in [0, 100]."""
-    missing = [c for c in COMPONENT_COLS if c not in components.columns]
-    if missing:
-        raise ValueError(f"combine() missing component columns: {missing}")
+
+def combine(components: pd.DataFrame, method: str = DEFAULT_METHOD) -> pd.Series:
+    """Combine component columns into a Dynasty Value Series in [0, 100]."""
     if method not in _METHODS:
         raise ValueError(f"unknown combination method {method!r}; known: {list(_METHODS)}")
-    return _METHODS[method](components)
+    fn, required = _METHODS[method]
+    missing = [c for c in required if c not in components.columns]
+    if missing:
+        raise ValueError(f"combine() method={method!r} missing component columns: {missing}")
+    return fn(components)

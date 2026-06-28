@@ -22,12 +22,14 @@ import pandas as pd
 from src.config import PROCESSED_DIR
 from src.data.cap import player_salaries_2026
 from src.data.contracts import build_2026_contracts
+from src.data.population import extended_training_frame
 from src.models.components import age, combine, injury, intangibles, position, production, team
 
 OUT_PATH = Path(PROCESSED_DIR) / "player_value_v2_2026.csv"
 POSITIONS = ("QB", "RB", "WR", "TE")
+NFL_TEAM_SEASON = 2025  # season we look up modal NFL team from; mirrors CURRENT_SEASON
 
-IDENTITY_COLS = ("espn_id", "player", "team", "position_group", "age", "years_exp")
+IDENTITY_COLS = ("espn_id", "player", "team", "nfl_team_2025", "position_group", "age", "years_exp")
 CONTRACT_COLS = ("salary_2026", "years_2026", "dynasty_total_salary")
 COMPONENT_COLS = (
     "production_value",
@@ -58,6 +60,9 @@ def _contract_roster() -> pd.DataFrame:
     ``years_2026`` we join from ``build_2026_contracts()`` (only active +
     extensions carry an explicit term); rookie + practice-squad players default
     to 1 (mirrors the legacy engine, see ``models/value.py::dynasty_value_table``).
+    NFL team for the 2025 season (their modal posteam) is joined from the
+    extended training frame so the master CSV carries an NFL-team column
+    alongside the league team.
     """
     sal = player_salaries_2026()
     contracts, _notes = build_2026_contracts()
@@ -65,6 +70,17 @@ def _contract_roster() -> pd.DataFrame:
     out = sal.merge(years, on=["team", "player"], how="left")
     out["years_2026"] = out["years_2026"].fillna(1).clip(lower=1, upper=5).astype(int)
     out["dynasty_total_salary"] = out["salary_2026"] * out["years_2026"]
+
+    # NFL team for the latest fully-completed NFL season (modal posteam)
+    ext = extended_training_frame()
+    nfl_team_lookup = (
+        ext[ext["season"] == NFL_TEAM_SEASON]
+        .dropna(subset=["espn_id", "team"])
+        .drop_duplicates("espn_id")
+        .set_index("espn_id")["team"]
+        .to_dict()
+    )
+    out["nfl_team_2025"] = out["espn_id"].map(nfl_team_lookup)
     return out
 
 
@@ -76,7 +92,7 @@ def _score_position(players: pd.DataFrame, pos: str) -> pd.DataFrame:
     return out
 
 
-def build_player_values_v2(combination_method: str = "uniform_weighted_sum") -> pd.DataFrame:
+def build_player_values_v2(combination_method: str = combine.DEFAULT_METHOD) -> pd.DataFrame:
     """Top-level entry point: produces and returns the v2 master player value frame."""
     roster = _contract_roster()
 
