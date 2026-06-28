@@ -97,8 +97,8 @@ forward window?
 ## Phase plan
 
 - **Phase 1E** ✅ — WR Age sigmoid (center 28, steepness 2); empirically validated for dynasty horizon
-- **Phase 2-4**: per-position sigmoid parameters (RB / QB / TE)
-  - RB: likely earlier center (e.g., 26-27) due to faster decline + injury attrition
+- **Phase 2** ✅ — **RB Age sigmoid (center 25, steepness 2.5)**: empirically derived via 3-year forward cumulative PPG analysis (RB careers are shorter, so 3-yr horizon better captures "remaining productive runway" than the 4-yr horizon used for WR). RB cliff is much sharper than WR — median future-3yr PPG drops from 16 (age 22) → 4 (age 26) → 0 (age 30+). Validation: Pearson +0.32 (vs WR's +0.18), OOF R² 0.10 (vs WR's 0.029) — **RB age signal is ~3× stronger** than WR.
+- **Phase 3-4**: QB / TE
   - QB: later center (e.g., 32-33) due to longer prime
   - TE: likely between WR and QB
 - **Later**: elite-aging detector + parameter re-tuning from richer multi-position data

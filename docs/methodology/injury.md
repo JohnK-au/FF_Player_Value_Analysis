@@ -116,7 +116,8 @@ top.
 ## Phase plan
 
 - **Phase 1E** ✅ — WR Injury implemented + validated
-- **Phases 2-4** — apply the same formula to RB / QB / TE; may need different parameters per position (RB injury attrition is more severe, QB pocket presence less injury-prone, etc.)
+- **Phase 2** ✅ — RB uses **same formula and parameters as WR** (THRESHOLD=4, K=3, weights [1.0, 0.5, 0.25]). May need to tune for RB's higher attrition profile in a later iteration; v1 keeps it position-agnostic for simplicity.
+- **Phases 3-4** — QB / TE
 - **v2** — real nflverse injury data; severity-weighted recovery penalty
 
 ## TODOs

@@ -28,7 +28,13 @@ NEUTRAL = 50.0
 # cleaner age-survival analysis.
 AGE_PARAMS: dict[str, dict[str, float]] = {
     "WR": {"center": 28.0, "steepness": 2.0},
-    # RB / QB / TE land in Phases 2-4 with their own tuned parameters.
+    # RB Phase 2: empirically derived from 3-yr forward cumulative PPG.
+    # RB cliff is sharper and earlier than WR: median future-3yr drops from
+    # 16 (age 22) -> 4 (age 26) -> 0 (age 30+). Grid-search best fit was
+    # center=25, steepness=2.5. Validation: Pearson +0.32, OOF R^2 0.10
+    # (3x WR's age signal). See docs/methodology/age.md.
+    "RB": {"center": 25.0, "steepness": 2.5},
+    # QB / TE in Phases 3-4
 }
 
 
@@ -39,10 +45,10 @@ def _logistic_age_value(age: float, center: float, steepness: float) -> float:
     return 100.0 / (1.0 + math.exp((float(age) - center) / steepness))
 
 
-def _score_wr(players: pd.DataFrame) -> pd.DataFrame:
-    """WR Age scoring: sigmoid centered at age 28."""
+def _score_position(players: pd.DataFrame, position: str) -> pd.DataFrame:
+    """Age scoring for one position using its tuned sigmoid."""
     out = players.copy()
-    params = AGE_PARAMS["WR"]
+    params = AGE_PARAMS[position]
     out["age_value"] = [
         _logistic_age_value(a, params["center"], params["steepness"])
         for a in out["age"]
@@ -52,18 +58,17 @@ def _score_wr(players: pd.DataFrame) -> pd.DataFrame:
 
 def score(players: pd.DataFrame, position: str) -> pd.DataFrame:
     """Age score per player in [0, 100]."""
-    if position == "WR":
-        return _score_wr(players)
+    if position in AGE_PARAMS:
+        return _score_position(players, position)
     out = players.copy()
-    out["age_value"] = NEUTRAL  # RB/QB/TE in Phases 2-4
+    out["age_value"] = NEUTRAL  # QB / TE in Phases 3-4
     return out
 
 
 if __name__ == "__main__":
-    # Smoke test: print the age curve
-    params = AGE_PARAMS["WR"]
-    print("WR Age curve (sigmoid center=28, steepness=2):")
-    for a in range(20, 38):
-        v = _logistic_age_value(a, params["center"], params["steepness"])
-        bar = "#" * int(v / 2)
-        print(f"  age {a}: {v:6.2f}  {bar}")
+    for position, params in AGE_PARAMS.items():
+        print(f"\n{position} Age curve (sigmoid center={params['center']}, steepness={params['steepness']}):")
+        for a in range(20, 38):
+            v = _logistic_age_value(a, params["center"], params["steepness"])
+            bar = "#" * int(v / 2)
+            print(f"  age {a}: {v:6.2f}  {bar}")

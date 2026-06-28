@@ -51,7 +51,9 @@ DEFAULT_OFV_WEIGHTS: dict[str, float] = {
 # WR locked Phase 1D; other positions default to pass-through.
 MULTIPLIER_BANDS: dict[str, tuple[float, float]] = {
     "WR": (0.875, 1.125),  # USER OVERRIDE of data-driven [0.92, 1.08] -- see combination.md
-    "RB": (1.0, 1.0),      # Phase 2
+    # RB Phase 2: data-driven empirical effect ~22% (max worst-best PPG swing ~1.85 PPG
+    # on ~8.5 PPG mean RB). Set wider than WR to reflect the stronger empirical effect.
+    "RB": (0.85, 1.15),
     "QB": (1.0, 1.0),      # Phase 3
     "TE": (1.0, 1.0),      # Phase 4
 }

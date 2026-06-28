@@ -70,6 +70,7 @@ intuition.
 
 - **Phase 1C** ✅ — WR Team component implemented + empirically tuned
 - **Phase 1D** ✅ — **On-Field Value** = Production × Team locked at multiplier band [0.875, 1.125]; written to `on_field_value` column in master CSV (see [combination.md](combination.md))
+- **Phase 2** ✅ — **RB Team component**: empirically tuned via residual regression. Result was clean: `team_ybc_att` (carry-weighted avg ybc_att across team's RBs — pure O-line proxy) is the ONLY signal that adds residual variance. Single-feature R² 2.16% out of total 2.22%. Dropped: `team_rush_epa` (wrong sign — multicollinear with player's own rushing_epa), `team_pass_rate` (noise), `top_rb_other_share` (backfield competition surprisingly added no signal beyond carries usage in Production). OFV multiplier band for RB locked at [0.85, 1.15] (±15%) — wider than WR's [0.875, 1.125] to reflect the stronger empirical effect (max worst-best PPG swing ~1.85 PPG for RB vs ~1 PPG for WR).
 - **Phase 2 (RB)**: empirically tune RB-specific team features (likely `team_rush_epa`, plus O-line proxy if a clean source can be found)
 - **Phase 3 (QB)**: supporting-cast quality (receiver separation pool, O-line pressure-allowed)
 - **Phase 4 (TE)**: WR-like with TE-specific weight rebalancing

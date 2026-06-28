@@ -115,7 +115,16 @@ def _lookup_injury_value(espn_id, latest_season: int = LATEST_SEASON) -> float:
     return float(max(0.0, min(100.0, availability - recovery_penalty)))
 
 
-def _score_wr(players: pd.DataFrame) -> pd.DataFrame:
+SCORED_POSITIONS: tuple[str, ...] = ("WR", "RB")
+
+
+def _score_position(players: pd.DataFrame) -> pd.DataFrame:
+    """Position-agnostic Injury scoring -- same formula across positions.
+
+    Position-specific params (THRESHOLD, K, recency weights) can diverge later
+    if validation shows different attrition profiles per position; for v1
+    same params for WR and RB.
+    """
     out = players.copy()
     out["injury_value"] = [_lookup_injury_value(eid, LATEST_SEASON) for eid in out["espn_id"]]
     return out
@@ -123,10 +132,10 @@ def _score_wr(players: pd.DataFrame) -> pd.DataFrame:
 
 def score(players: pd.DataFrame, position: str) -> pd.DataFrame:
     """Injury score per player in [0, 100]."""
-    if position == "WR":
-        return _score_wr(players)
+    if position in SCORED_POSITIONS:
+        return _score_position(players)
     out = players.copy()
-    out["injury_value"] = NEUTRAL  # RB/QB/TE land in Phases 2-4
+    out["injury_value"] = NEUTRAL  # QB / TE land in Phases 3-4
     return out
 
 
