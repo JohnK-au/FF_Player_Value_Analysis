@@ -1,9 +1,8 @@
 # Position Component
 
-> **Status:** Phase 4.5 v1 live. Per-position constants computed via
-> 4-sub-metric composite, equal-weighted, min-max normalised to [0, 100].
-> Re-derive when the player pool meaningfully changes (post-FA sweep,
-> post-draft, new season).
+> **Status:** Phase 4.5 v2 live (VORP-Deep Total Impact). Per-position constants
+> derived from absolute PPG (not OFV). Re-derive when the player pool meaningfully
+> changes (post-FA sweep, post-draft, new season).
 
 ## Intent
 
@@ -13,12 +12,12 @@ importance for team success** — how much a unit at that position contributes
 to a team's competitive edge in our specific 8-team dynasty league.
 
 This is **NOT cap pricing**. Cap-based fair-value computation is a Phase 5+
-task; Position v1 is about positional importance only.
+task; Position v2 is about positional importance only.
 
 Within-position differentiation lives in Production / Team / On-Field Value;
 Position only differentiates *across* positions.
 
-## Locked v1 scores
+## Locked v2 scores
 
 Computed 2026-06-28 from the master CSV (490 priced players: 155 rostered
 + 335 dynasty-league FAs):
@@ -26,118 +25,139 @@ Computed 2026-06-28 from the master CSV (490 priced players: 155 rostered
 | Position | `position_value` |
 |---|---:|
 | **RB** | **100.0** |
-| WR | 35.2 |
-| TE | 21.2 |
+| WR | 93.1 |
+| TE | 8.6 |
 | **QB** | **0.0** |
 
-**Reading**: in a 1-QB league with deep QB pool, the per-team competitive
-advantage from "winning QB" is smallest (elite QB only ~8 OFV above
-replacement, with just 1 slot per team). RB combines the biggest elite-vs-
-replacement gap (~19 OFV) with 2.5 effective slots per team → highest total
-positional importance.
+**Reading**: RB and WR are nearly tied at the top because both combine
+meaningful elite-vs-deep-FA PPG gaps with multiple roster slots per team.
+QB sits at 0 — in a 1-QB league with a deep QB pool, the per-team
+positional advantage from elite QBs is smallest. TE is genuinely low —
+its PPG distribution is flatter across the pool, so elite TEs don't have
+the same absolute PPG advantage as elite RB/WR.
 
-## Methodology — 4 sub-metrics, equal-weighted composite
+## Methodology — VORP-Deep Total Impact (T-only)
 
 For each position `p` in {QB, RB, WR, TE}:
 
-### Sub-metric 1: Slot Count `S_p`
-Hardcoded from league rules §4 + estimated flex distribution:
-- QB = 1.0
-- RB = 2.5
-- WR = 3.0
-- TE = 1.5
-- Sum = 8 (= total skill starters per team)
+### Step 1 — Slot Count `S_p` (effective starters per team)
+Hardcoded from rules §4 + flex distribution:
+- QB = 1.0, RB = 2.5, WR = 3.0, TE = 1.5 (sum = 8 = skill starters/team)
 
-Flex distribution assumptions:
-- WR/TE flex ≈ 62% WR + 38% TE
-- RB/WR/TE flex ≈ 38% RB + 50% WR + 12% TE
+### Step 2 — Elite and Replacement PPG
+From 2025 PPG (games ≥ 4) over the master CSV pool:
+- `N = 8 × S_p` (league-wide starter slots, one per team)
+- **Elite** = mean PPG of top `N` players by 2025 PPG
+- **Replacement (deep FA)** = mean PPG of ranks `3N+1` to `4N`
+  - QB: ranks 25-32 (the deep FA tier — realistic worst-case raid)
+  - RB: ranks 61-80
+  - WR: ranks 73-96
+  - TE: ranks 37-48
 
-### Sub-metric 2: Marginal Gap `M_p` (per-slot premium of elite vs replacement)
-From master CSV's `on_field_value` column:
-- **Elite** = top `(8 × S_p)` players at position p by OFV (one per team starter slot)
-- **Replacement** = OFV at rank `(8 × S_p + 1)` (bench cutoff)
-- `M_p = mean(elite OFV) − replacement OFV`
+### Step 3 — Marginal Gap and Total Impact (PPG units)
+- `M_p = elite_avg − replacement_avg` (per-slot PPG gap vs deep FA)
+- `T_p = M_p × S_p` (total team PPG advantage if a team wins all slots at this position)
 
-### Sub-metric 3: Total Impact `T_p`
-- `T_p = M_p × S_p`
-- "If a team wins all slots at this position, how much PPG-advantage do they get?"
+### Step 4 — Composite + Normalisation
+- Z-score `T_p` across the 4 positions
+- Min-max normalise to [0, 100]
+- (Equivalently: only the T sub-metric is weighted; M, D, S sub-metrics are dropped in v2.)
 
-### Sub-metric 4: Supply-Demand Scarcity `D_p`
-- **Bench (idealized, proportional to S_p)**: `bench_p = 15 × S_p / 8` (15 = 23 skill slots − 8 starters)
-- **League demand**: `8 × (S_p + bench_p)`
-- `D_p = league_demand / pool_size_p` where `pool_size_p` from master CSV (rostered + FAs)
+## Sub-metric snapshot (2026-06-28)
 
-### Combination
-1. Z-score each sub-metric across the 4 positions
-2. Equal weights (v1): composite_z = (M_z + T_z + D_z + S_z) / 4
-3. Min-max normalize composite_z across positions to [0, 100]
+| Position | S | N (starters) | Elite avg PPG | Deep-FA replacement PPG | M_ppg | **T_ppg** |
+|---|---:|---:|---:|---:|---:|---:|
+| QB | 1.0 | 8 | 25.07 | 12.25 | 12.82 | **12.82** |
+| RB | 2.5 | 20 | 18.35 | 4.85 | 13.49 | **33.74** |
+| WR | 3.0 | 24 | 16.84 | 6.08 | 10.77 | **32.30** |
+| TE | 1.5 | 12 | 14.42 | 4.68 | 9.74 | **14.61** |
 
-## Sub-metric values (2026-06-28 snapshot)
+## How v2 was chosen (over v1 + other variants)
 
-| Pos | S | n_elite | Elite OFV | Replacement OFV | M | T | Pool | League demand | D |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| QB | 1.0 | 8 | 71.61 | 63.40 | **8.21** | 8.21 | 53 | 23.0 | 0.434 |
-| RB | 2.5 | 20 | 65.48 | 46.64 | **18.84** | **47.11** | 133 | 57.5 | 0.432 |
-| WR | 3.0 | 24 | 58.77 | 48.55 | 10.22 | 30.67 | 204 | 69.0 | 0.338 |
-| TE | 1.5 | 12 | 70.85 | 55.29 | 15.56 | 23.35 | 100 | 34.5 | 0.345 |
+**v1** (OFV-based composite with equal weights) had a methodological bug:
+OFV is normalized **within position** (top WR ≈ top TE ≈ 100 by construction),
+so comparing M_p in OFV units across positions doesn't preserve absolute
+PPG-gap differences. Result: TE looked artificially scarce (M_TE = 15.6 in
+OFV) even though its absolute PPG gap is small (~3 PPG strict, ~10 PPG deep).
 
-Z-scored composite:
-- RB: +1.09 → 100.0
-- WR: −0.07 → 35.2
-- TE: −0.32 → 21.2
-- QB: −0.70 → 0.0
+**v2 fix**: re-derive M using **absolute 2025 PPG** instead of OFV. Now M_p
+is comparable across positions. The "drop-off from Chase to next-tier WR is
+bigger than Kelce to next-tier TE in absolute PPG terms" — user's intuition —
+is correctly captured.
+
+**Replacement-tier choice**: explored four replacement definitions in PPG units:
+
+| Tier | QB replacement | RB | WR | TE | Reads as |
+|---|---:|---:|---:|---:|---|
+| Strict (rank N+1) | 22.04 | 13.77 | 13.03 | 11.61 | Bench cutoff; gap is small |
+| Backup (avg N+1 to 2N) | 20.02 | 10.55 | 11.62 | 9.98 | First-bench tier |
+| FA (avg 2N+1 to 3N) | 15.43 | 6.96 | 9.01 | 6.78 | Realistic FA tier (QB ranks 17-24) |
+| **Deep (avg 3N+1 to 4N)** | **12.25** | **4.85** | **6.08** | **4.68** | Deep FA / "if you're desperate" |
+
+Chose **Deep** because:
+- It captures the realistic worst-case replacement when no top players are available
+- It produces the most differentiated cross-position scores
+- It correctly elevates WR (whose deep FA pool is genuinely weak) close to RB
+- It matches user's intuition that "elite WR Chase vs deep-FA WR is a huge gap"
+
+**Weighting choice**: T-only (Total Impact only). Equivalent to v3 in the
+variant exploration. Reasoning:
+- M_p captures per-slot value; T = M × S adds slot count
+- T is the cleanest single answer to "how much does winning this position
+  contribute to team PPG advantage"
+- D (demand/supply) was deprioritized because it doesn't reflect on-field impact
+- S alone is just slot count, no production info
 
 ## Cross-position impact on dynasty value
 
 With Position weighted 0.05 in the OFV-weighted combine:
 - Max swing per player = 100 × 0.05 = 5 dynasty-value points
 - RB players: +5.0 (vs neutral baseline +2.5) → net +2.5 vs prior stub
+- WR players: +93.1 × 0.05 = +4.66 (close to RB; was +1.76 in v1)
+- TE players: +8.6 × 0.05 = +0.43 (was +1.06 in v1; dropped)
 - QB players: 0.0 (vs neutral baseline +2.5) → net −2.5 vs prior stub
-- WR/TE: between, scaled by their position score
 
-Observed shift after activation:
-- Top RBs climbed ~2.5 (Gibbs 85.8 → 88.3, Bijan 84.2 → 86.7)
-- Top TEs dropped ~1.4 (McBride 79.6 → 78.1)
-- Top WRs dropped ~0.7 (JSN 78.8 → 78.0)
-- Top QBs dropped ~2.5 (Drake Maye 78.0 → 75.5; out of top-5 cross-position)
-
-This matches the expected math; cross-position ranking shifted but didn't
-dramatically reorder within positions (which it shouldn't, since within-position
-Position is constant).
+Cross-position rank shifts vs v1: WR climbs significantly, TE drops, QB and RB
+stay at their extremes.
 
 ## Reused infrastructure
 
-- Master CSV (`data/processed/player_value_v2_2026.csv`) for OFV + pool size
-- `src/data/cap.py::position_salary_tables` — useful diagnostic for current
-  league-cap distribution (sanity-check side analysis, not used in composite)
-
-## Phase plan
-
-- **Phase 4.5 v1** ✅ — 4-sub-metric composite, equal weights, locked
-- **Weight tuning** (future): the equal-weight v1 may emphasize the wrong sub-metrics.
-  Open candidates:
-  - Heavy on M (Marginal Gap) — the "winning the position" intuition
-  - Heavy on T (Total Impact) — accounts for slot count
-  - Empirically: derive weights from auction-outcome data once we have it
-- **Cap pricing extension** (Phase 5+): the original framing the user proposed
-  was a cap-equilibrium calc. Position v1 is positional importance only;
-  cap fair-value comes later.
+- Master CSV (`data/processed/player_value_v2_2026.csv`) for pool size
+- Extended training frame (`src/data/population.py::extended_training_frame`)
+  for 2025 PPG by player
 
 ## TODOs
 
-- Re-derive POSITION_SCORES when the player pool meaningfully changes (FA
-  sweep, draft, season start). The `_scratch_position_calc.py`-style analysis
-  is the canonical re-computation path.
-- Consider empirically deriving flex-distribution percentages (WR/TE 62/38,
-  RB/WR/TE 38/50/12) once we have historical lineup data.
-- Weight tuning workshop after v1 results have been digested.
+- **Multi-tier concentration refinement** (next iteration): compute multiple
+  tier definitions explicitly per position:
+  - **Elite tier** — true top tier (~3-5 truly elite players)
+  - **Startable tier** — players who fill starter slots in the league
+  - **Bench tier** — backup-grade players rostered for depth/byes
+  - **Reserve tier** — deep FA pool, waiver wire
+  Capture concentration (how steep the dropoff is between tiers) per position
+  rather than collapsing to one elite-vs-replacement gap. Could meaningfully
+  elevate TE if its elite tier is genuinely concentrated (Kelce/McBride/Bowers
+  far above the long tail).
+- **Re-derivation cadence**: re-run when the player pool meaningfully changes
+  (post-FA sweep, post-draft, new season). Helper: `_scratch_vorp_tiers.py`-style
+  analysis from a fresh master CSV.
+- **Empirically tune flex distribution** (WR/TE 62/38, RB/WR/TE 38/50/12)
+  once we have historical lineup data.
 
 ## Known gaps
 
-- **Equal-weighted composite is a placeholder.** No reason to believe each
-  sub-metric should contribute equally; needs empirical tuning.
+- **Single-tier replacement** (deep FA only) ignores within-position
+  bifurcation. The "TE elite tier is concentrated" intuition isn't captured
+  cleanly — TE drops to 8.6 instead of getting a bifurcation premium.
 - **Idealized bench distribution** (proportional to S_p) may differ from
-  actual team behavior. Real rosters likely over-weight RB depth (injury
-  attrition) and under-weight TE depth (most teams stream).
+  actual team behavior. Used in computing D_p (now unused in v2's T-only
+  combine, but still relevant if we ever re-weight).
 - **Static slot counts.** A team could play a 0-RB strategy or stream TEs;
-  S_p reflects "typical" starter usage, not adversarial deviation.
+  S_p reflects typical lineup behavior, not adversarial deviation.
+
+## Version history
+
+| Version | Date | Method | Scores (QB/RB/WR/TE) |
+|---|---|---|---|
+| v1 | 2026-06-28 | OFV-based 4-sub-metric composite, equal weights, min-max | 0 / 100 / 35.2 / 21.2 |
+| **v2** | 2026-06-28 | **PPG-based VORP-Deep Total Impact (T-only)** | **0 / 100 / 93.1 / 8.6** |
