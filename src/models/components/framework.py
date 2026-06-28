@@ -29,8 +29,9 @@ OUT_PATH = Path(PROCESSED_DIR) / "player_value_v2_2026.csv"
 POSITIONS = ("QB", "RB", "WR", "TE")
 NFL_TEAM_SEASON = 2025  # season we look up modal NFL team from; mirrors CURRENT_SEASON
 
-IDENTITY_COLS = ("espn_id", "player", "team", "nfl_team_2025", "position_group", "age", "years_exp")
+IDENTITY_COLS = ("espn_id", "player", "team", "nfl_team_2025", "roster_status", "position_group", "age", "years_exp")
 CONTRACT_COLS = ("salary_2026", "years_2026", "dynasty_total_salary")
+FA_MIN_GAMES_2025 = 4  # minimum 2025 games for "currently relevant" FA inclusion
 COMPONENT_COLS = (
     "production_value",
     "age_value",
@@ -115,7 +116,44 @@ def _contract_roster() -> pd.DataFrame:
         .to_dict()
     )
     out["nfl_team_2025"] = out["espn_id"].map(nfl_team_lookup)
+
+    # roster_status mirrors source for rostered players
+    out["roster_status"] = out["source"]
     return out
+
+
+def _fa_roster(rostered_ids: set[int]) -> pd.DataFrame:
+    """Dynasty-league FAs: NFL skill players in 2025 with games >= FA_MIN_GAMES_2025
+    who are NOT on any of our 8 contract rosters.
+
+    Same schema as the rostered roster but contract-derived fields are NaN
+    (no salary, no years, no dynasty_total_salary, downstream no surplus).
+    """
+    ext = extended_training_frame()
+    fa = ext[
+        (ext["season"] == NFL_TEAM_SEASON)
+        & ext["position_group"].isin(POSITIONS)
+        & (ext["games"].fillna(0) >= FA_MIN_GAMES_2025)
+        & ext["espn_id"].notna()
+        & ~ext["espn_id"].astype("Int64").isin(rostered_ids)
+    ].copy()
+    fa = fa.drop_duplicates("espn_id")
+
+    out = pd.DataFrame({
+        "espn_id": fa["espn_id"].astype("Int64"),
+        "player": fa["name"],
+        "team": pd.NA,                       # no league team
+        "nfl_team_2025": fa["team"],          # their 2025 NFL team
+        "roster_status": "fa",
+        "position_group": fa["position_group"],
+        "age": fa["age"],
+        "years_exp": fa["years_exp"],
+        "salary_2026": pd.NA,
+        "years_2026": pd.NA,
+        "dynasty_total_salary": pd.NA,
+        "source": "fa",
+    })
+    return out.reset_index(drop=True)
 
 
 def _score_position(players: pd.DataFrame, pos: str) -> pd.DataFrame:
@@ -126,9 +164,26 @@ def _score_position(players: pd.DataFrame, pos: str) -> pd.DataFrame:
     return out
 
 
-def build_player_values_v2(combination_method: str = combine.DEFAULT_METHOD) -> pd.DataFrame:
-    """Top-level entry point: produces and returns the v2 master player value frame."""
-    roster = _contract_roster()
+def build_player_values_v2(
+    combination_method: str = combine.DEFAULT_METHOD,
+    include_fas: bool = True,
+) -> pd.DataFrame:
+    """Top-level entry point: produces and returns the v2 master player value frame.
+
+    When ``include_fas=True`` (default), also scores dynasty-league free agents
+    (NFL skill players who played >= ``FA_MIN_GAMES_2025`` games in 2025 and
+    are NOT on any of our 8 contract rosters). FAs are appended to the same
+    master CSV with ``roster_status='fa'``; their salary / years / contract
+    surplus fields are NaN.
+    """
+    rostered = _contract_roster()
+    if include_fas:
+        rostered_ids = set(rostered["espn_id"].dropna().astype(int).tolist())
+        fas = _fa_roster(rostered_ids)
+        print(f"  build_player_values_v2: {len(rostered)} rostered + {len(fas)} FAs = {len(rostered) + len(fas)} total")
+        roster = pd.concat([rostered, fas], ignore_index=True)
+    else:
+        roster = rostered
 
     pieces = []
     for pos in POSITIONS:
@@ -143,10 +198,13 @@ def build_player_values_v2(combination_method: str = combine.DEFAULT_METHOD) -> 
             scored["production_value"], scored["team_value"], scored["position_group"]
         )
         scored["dynasty_value"] = combine.combine(scored, method=combination_method)
-        years = scored["years_2026"].clip(lower=1)
+        # NaN-safe years / surplus calcs for FAs (no contract)
+        years = pd.to_numeric(scored["years_2026"], errors="coerce").clip(lower=1)
         scored["contract_value"] = scored["dynasty_value"] / years
-        scored["dynasty_surplus"] = scored["dynasty_value"] - scored.get("dynasty_total_salary", 0)
-        scored["contract_surplus"] = scored["contract_value"] - scored["salary_2026"]
+        total_sal = pd.to_numeric(scored.get("dynasty_total_salary", 0), errors="coerce")
+        salary = pd.to_numeric(scored["salary_2026"], errors="coerce")
+        scored["dynasty_surplus"] = scored["dynasty_value"] - total_sal
+        scored["contract_surplus"] = scored["contract_value"] - salary
 
     out_cols = [c for c in OUTPUT_COLS if c in scored.columns]
     return scored[out_cols].sort_values("dynasty_value", ascending=False, na_position="last")

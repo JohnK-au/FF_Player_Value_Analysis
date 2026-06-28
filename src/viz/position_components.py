@@ -21,7 +21,7 @@ from src.config import REPO_ROOT
 MASTER_CSV = Path("data/processed/player_value_v2_2026.csv")
 
 DISPLAY_COLS = [
-    "player", "team", "nfl_team_2025", "salary_2026", "age",
+    "player", "team", "nfl_team_2025", "roster_status", "salary_2026", "age",
     "production_value", "team_value", "age_value",
     "injury_value", "position_value", "intangibles_value",
     "on_field_value", "dynasty_value",
@@ -37,6 +37,7 @@ PRETTY_NAMES = {
     "player": "Player",
     "team": "League",
     "nfl_team_2025": "NFL Team",
+    "roster_status": "Status",
     "salary_2026": "Salary",
     "age": "Age",
     "production_value": "Production",
@@ -47,6 +48,15 @@ PRETTY_NAMES = {
     "intangibles_value": "Intangibles*",
     "on_field_value": "On-Field Value",
     "dynasty_value": "Dynasty Value",
+}
+
+# Pretty labels for the roster_status column
+STATUS_LABELS = {
+    "active": "Active",
+    "extension": "Ext.",
+    "rookie": "Rookie",
+    "practice_squad": "PSquad",
+    "fa": "FA",
 }
 
 CAPTION_BY_POS = {
@@ -64,14 +74,23 @@ def render(position: str = "WR"):
     pos_df.insert(0, "rank", range(1, len(pos_df) + 1))
 
     show = pos_df[["rank"] + DISPLAY_COLS].copy()
-    show["salary_2026"] = show["salary_2026"].round(0).astype(int)
-    show["age"] = show["age"].round(1)
+    # FAs have NaN salary -- keep as Float to allow NaN, format with "—" later
+    show["salary_2026"] = pd.to_numeric(show["salary_2026"], errors="coerce")
+    show["age"] = pd.to_numeric(show["age"], errors="coerce").round(1)
     for c in VALUE_COLS:
         show[c] = show[c].round(1)
+    # Pretty-print the roster_status / team / nfl_team values
+    show["roster_status"] = show["roster_status"].map(STATUS_LABELS).fillna(show["roster_status"])
+    show["team"] = show["team"].fillna("—")
+    show["nfl_team_2025"] = show["nfl_team_2025"].fillna("—")
     show = show.rename(columns={**PRETTY_NAMES, "rank": "#"})
 
     pretty_value_cols = [PRETTY_NAMES[c] for c in VALUE_COLS]
     pretty_age = PRETTY_NAMES["age"]
+    pretty_salary = PRETTY_NAMES["salary_2026"]
+
+    def _fmt_salary(v):
+        return "—" if pd.isna(v) else f"{int(v):d}"
 
     pos_label = CAPTION_BY_POS.get(position, position)
 
@@ -80,7 +99,7 @@ def render(position: str = "WR"):
         .background_gradient(subset=pretty_value_cols, cmap="RdYlGn", vmin=0, vmax=100)
         .background_gradient(subset=[pretty_age], cmap="RdYlGn_r", vmin=22, vmax=33)
         .format({
-            PRETTY_NAMES["salary_2026"]: "{:.0f}",
+            pretty_salary: _fmt_salary,
             pretty_age: "{:.1f}",
             **{c: "{:.1f}" for c in pretty_value_cols},
         })
