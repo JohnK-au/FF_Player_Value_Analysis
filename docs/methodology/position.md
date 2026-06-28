@@ -128,16 +128,14 @@ stay at their extremes.
 
 ## TODOs
 
-- **Multi-tier concentration refinement** (next iteration): compute multiple
-  tier definitions explicitly per position:
-  - **Elite tier** — true top tier (~3-5 truly elite players)
-  - **Startable tier** — players who fill starter slots in the league
-  - **Bench tier** — backup-grade players rostered for depth/byes
-  - **Reserve tier** — deep FA pool, waiver wire
-  Capture concentration (how steep the dropoff is between tiers) per position
-  rather than collapsing to one elite-vs-replacement gap. Could meaningfully
-  elevate TE if its elite tier is genuinely concentrated (Kelce/McBride/Bowers
-  far above the long tail).
+- **Multi-tier concentration overlay** (deferred, NOT core methodology — per user 2026-06-28):
+  expose elite / startable / bench / reserve tier breakdowns as a *secondary
+  analytical layer* on top of the locked `position_value`, used for filtering
+  and sorting results (e.g., "show me the elite-tier WRs", "which TEs are
+  truly in the concentrated elite vs the long tail"). The single-tier
+  VORP-Deep score stays as the cross-position importance constant; multi-tier
+  views are an overlay on top of the existing rankings, not a recomputation
+  of the score itself. See [[multi-tier-position-overlay]].
 - **Re-derivation cadence**: re-run when the player pool meaningfully changes
   (post-FA sweep, post-draft, new season). Helper: `_scratch_vorp_tiers.py`-style
   analysis from a fresh master CSV.
