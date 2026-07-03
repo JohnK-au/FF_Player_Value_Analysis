@@ -37,10 +37,13 @@ config  ──►  data (ingest + parse)  ──►  dataset (unified features) 
 | | `models/components/intangibles.py` | Stub at neutral 50 |
 | | `models/components/combine.py` | On-Field Value (Production × Team multiplier) + Dynasty Value combine method |
 | | `models/components/framework.py` | Orchestrator: builds `player_value_v2_2026.csv` (490 players × 6 components) |
+| **Models — Cap pricing** | `models/pricing.py` | Cap-unit pricing LAYER on V2 quality scores. 4-stage pipeline: per-position replacement baseline → above-baseline DV → non-linear scarcity (α exponent) → rate × age multiplier × multi-year age decay. Writes `data/processed/player_pricing_2026.csv` joined to V2 master by espn_id. V2 master itself is never modified. See [pricing.md](methodology/pricing.md). |
 | **Viz** | `viz/contracts.py`, `viz/cap.py` | Figures (contract timeline, cap distribution/projection, salary-by-position) |
 | | `viz/value.py`, `viz/value_interactive.py`, `viz/summary.py` | V1 fair-value scatters + interactive HTMLs (read V1 outputs) |
 | | `viz/position_components.py` | V2 per-position component grids (one HTML per position) |
 | | `viz/cross_position_variants.py` | V2 weight-tuning explorer — multiple Position-weight variants in one HTML each |
+| | `viz/combine_variants.py` | V2 combine-method workshop viz — 5 candidate Dynasty Value combine methods |
+| | `viz/pricing_variants.py` | Cap-pricing workshop viz — 4 preset parameter combinations |
 | **App** | `app/Home.py` + `app/pages/*.py` | Streamlit app — over/under board, Player Card, Market/Driver Explorer, Roster, Auction, Trade |
 
 ## Conventions
