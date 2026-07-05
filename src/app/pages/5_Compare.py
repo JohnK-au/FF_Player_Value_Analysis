@@ -502,9 +502,11 @@ if last is not None:
     ]):
         with reveal_cols[i]:
             m_choice, gap = _model_pick(prev_a, prev_b, col)
-            winner = name_a if m_choice == "a" else (name_b if m_choice == "b" else "Tie")
-            val_a = fmt_float_or_dash(prev_a.get(col), n=1)
-            val_b = fmt_float_or_dash(prev_b.get(col), n=1)
+            val_a_raw = prev_a.get(col)
+            val_b_raw = prev_b.get(col)
+            val_a_num = float(val_a_raw) if pd.notna(val_a_raw) else 0.0
+            val_b_num = float(val_b_raw) if pd.notna(val_b_raw) else 0.0
+
             active = (col == CATEGORY_TO_COL[last["category_label"]])
             # Agreement badge only for the active category (user only picked in one lens)
             badge = ""
@@ -516,13 +518,29 @@ if last is not None:
                     badge = " (tie)"
             elif active:
                 badge = " (skipped)"
-            st.metric(
-                f"{label}{badge}",
-                f"{winner}",
-                delta=f"+{gap:.1f}" if m_choice != "tie" else "even",
-                delta_color="off",
-                help=f"{name_a}: {val_a}  ·  {name_b}: {val_b}",
+
+            st.markdown(f"**{label}**{badge}")
+
+            # Two per-player metric cards side by side. Winner gets the delta
+            # showing the size of the gap; loser gets nothing (cleaner than
+            # a negative delta on the losing side).
+            sub = st.columns(2)
+            trophy_a = "🏆 " if m_choice == "a" else ""
+            trophy_b = "🏆 " if m_choice == "b" else ""
+            sub[0].metric(
+                f"{trophy_a}{name_a}",
+                f"{val_a_num:.1f}",
+                delta=f"+{gap:.1f}" if m_choice == "a" else None,
+                delta_color="normal",
             )
+            sub[1].metric(
+                f"{trophy_b}{name_b}",
+                f"{val_b_num:.1f}",
+                delta=f"+{gap:.1f}" if m_choice == "b" else None,
+                delta_color="normal",
+            )
+            if m_choice == "tie":
+                st.caption("Effective tie (< 0.5 gap)")
 
     # --- User valuation vs model fair_value_2026 (if the user has saved one) --
     val_a_user, _ = latest_valuation(int(prev_a.get("espn_id") or 0))
