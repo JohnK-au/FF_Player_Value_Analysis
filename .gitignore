@@ -31,6 +31,9 @@ data/raw/
 
 # Allowlist: subjective-override files are user-edited and must persist across sessions
 !data/research/intangibles_overrides.csv
+!data/research/user_comparisons.csv
+!data/research/player_comments.csv
+!data/research/user_valuations.csv
 
 # Figures (contain league data — names, salaries)
 figures/

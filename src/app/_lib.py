@@ -26,6 +26,12 @@ TEAMS = ["Nate", "Seeb", "Silv", "Kerr", "Will", "Drew", "Couc", "Haft"]
 MY_TEAM = "Kerr"
 ROSTER_STATUSES = ["active", "extension", "rookie", "practice_squad", "fa"]
 
+# ESPN CDN pattern for NFL team logos (2-3 char team abbreviation).
+TEAM_LOGO_URL_TEMPLATE = "https://a.espncdn.com/i/teamlogos/nfl/500/{team}.png"
+
+# User-input persistence files (allowlisted in .gitignore).
+RESEARCH_DIR_NAME = "research"
+
 # All 6 V2 component columns for card breakdowns / roster views.
 COMPONENT_COLS = [
     "production_value", "team_value", "age_value",
@@ -147,3 +153,200 @@ def team_roster(master: pd.DataFrame, team: str) -> pd.DataFrame:
 def fa_pool(master: pd.DataFrame) -> pd.DataFrame:
     """Return dynasty-league free agents (roster_status == 'fa')."""
     return master[master["roster_status"] == "fa"].copy()
+
+
+# --- Recent-season stats (for the Compare page, non-model view) --------------
+
+_STAT_COLS = [
+    "games", "ppg", "points", "target_share", "wopr", "snap_pct",
+    "carries", "rushing_epa",
+]
+
+
+@st.cache_data(show_spinner="Loading 2024 box-score stats...")
+def load_boxscore_stats(season: int = 2024) -> dict[int, dict]:
+    """Return {espn_id: {stat: value}} for the given season's box-score data.
+
+    Source: data/processed/player_boxscore_stats_{season}.csv (built by
+    src.data.nflverse::player_boxscore_stats). Defaults to 2024 -- the
+    last complete season with published nflverse seasonal aggregations.
+    """
+    from src.config import PROCESSED_DIR
+    path = PROCESSED_DIR / f"player_boxscore_stats_{season}.csv"
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path)
+    df = df.dropna(subset=["espn_id"])
+    df["espn_id"] = pd.to_numeric(df["espn_id"], errors="coerce").astype("Int64")
+    out: dict[int, dict] = {}
+    for _, r in df.iterrows():
+        if pd.notna(r["espn_id"]):
+            out[int(r["espn_id"])] = r.drop("espn_id").to_dict()
+    return out
+
+
+@st.cache_data(show_spinner="Loading recent-season stats...")
+def load_season_stats() -> pd.DataFrame:
+    """Return a wide DataFrame indexed by espn_id with columns
+    `<stat>_2024` and `<stat>_2025` for a fixed set of headline metrics.
+
+    Source: data/processed/training_frame_extended.csv.
+    """
+    from src.config import PROCESSED_DIR
+    tf = pd.read_csv(PROCESSED_DIR / "training_frame_extended.csv")
+
+    def _wide(season: int) -> pd.DataFrame:
+        keep = ["espn_id"] + [c for c in _STAT_COLS if c in tf.columns]
+        sub = (
+            tf[tf["season"] == season][keep]
+            .dropna(subset=["espn_id"])
+            .drop_duplicates("espn_id")
+            .copy()
+        )
+        sub["espn_id"] = pd.to_numeric(sub["espn_id"], errors="coerce").astype("Int64")
+        return sub.rename(columns={c: f"{c}_{season}" for c in _STAT_COLS if c in sub.columns})
+
+    a = _wide(2024)
+    b = _wide(2025)
+    merged = a.merge(b, on="espn_id", how="outer")
+    return merged
+
+
+# --- Team logos + player headshots (for the Compare page) --------------------
+
+def team_logo_url(team_abbr: str | None) -> str | None:
+    """Return ESPN CDN logo URL for a 2-3 char NFL team abbreviation, or None."""
+    if not team_abbr or (isinstance(team_abbr, float) and pd.isna(team_abbr)):
+        return None
+    return TEAM_LOGO_URL_TEMPLATE.format(team=str(team_abbr).lower())
+
+
+@st.cache_data(show_spinner="Loading player headshots...")
+def load_headshots() -> dict[int, str]:
+    """espn_id -> headshot URL. Built once from data/processed/player_headshots.csv
+    (see src/data/nflverse.py::player_headshots)."""
+    from src.config import PROCESSED_DIR
+    path = PROCESSED_DIR / "player_headshots.csv"
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path)
+    df = df.dropna(subset=["espn_id", "headshot_url"])
+    df["espn_id"] = pd.to_numeric(df["espn_id"], errors="coerce").astype("Int64")
+    return {int(r["espn_id"]): str(r["headshot_url"]) for _, r in df.iterrows() if pd.notna(r["espn_id"])}
+
+
+def player_headshot_url(espn_id) -> str | None:
+    """Return headshot URL for an espn_id, or None if missing."""
+    if pd.isna(espn_id):
+        return None
+    heads = load_headshots()
+    return heads.get(int(espn_id))
+
+
+# --- User-input persistence: comparisons + comments ---------------------------
+
+def _research_path(filename: str) -> Path:
+    """Path under data/research/ (created if missing)."""
+    from src.config import PROCESSED_DIR
+    p = PROCESSED_DIR.parent / RESEARCH_DIR_NAME
+    p.mkdir(parents=True, exist_ok=True)
+    return p / filename
+
+
+def _iso_now() -> str:
+    """UTC ISO 8601 timestamp for logging."""
+    import datetime as _dt
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def save_comparison(
+    category: str,
+    player_a_espn_id: int,
+    player_b_espn_id: int,
+    choice: str,
+    anonymous_mode: bool,
+) -> None:
+    """Append one comparison row to data/research/user_comparisons.csv."""
+    path = _research_path("user_comparisons.csv")
+    row = {
+        "timestamp": _iso_now(),
+        "category": category,
+        "player_a_espn_id": int(player_a_espn_id),
+        "player_b_espn_id": int(player_b_espn_id),
+        "choice": choice,
+        "anonymous_mode": bool(anonymous_mode),
+    }
+    df = pd.DataFrame([row])
+    df.to_csv(path, mode="a", header=not path.exists(), index=False)
+
+
+def save_comment(espn_id: int, comment: str) -> None:
+    """Append one comment row to data/research/player_comments.csv."""
+    if not comment or not comment.strip():
+        return
+    path = _research_path("player_comments.csv")
+    row = {
+        "timestamp": _iso_now(),
+        "espn_id": int(espn_id),
+        "comment": comment.strip(),
+    }
+    df = pd.DataFrame([row])
+    df.to_csv(path, mode="a", header=not path.exists(), index=False)
+
+
+def load_comparisons() -> pd.DataFrame:
+    """Read all persisted comparison choices. Empty DataFrame if none yet."""
+    path = _research_path("user_comparisons.csv")
+    if not path.exists():
+        return pd.DataFrame(columns=[
+            "timestamp", "category",
+            "player_a_espn_id", "player_b_espn_id", "choice", "anonymous_mode",
+        ])
+    return pd.read_csv(path)
+
+
+def load_comments(espn_id: int | None = None) -> pd.DataFrame:
+    """Read persisted comments. If espn_id given, filter to that player."""
+    path = _research_path("player_comments.csv")
+    if not path.exists():
+        return pd.DataFrame(columns=["timestamp", "espn_id", "comment"])
+    df = pd.read_csv(path)
+    if espn_id is not None:
+        df = df[pd.to_numeric(df["espn_id"], errors="coerce") == int(espn_id)]
+    return df
+
+
+def save_valuation(espn_id: int, valuation: float) -> None:
+    """Append the user's 1-year cap-unit valuation for a player to
+    data/research/user_valuations.csv. Multiple entries per player allowed
+    (running log); use latest_valuation(espn_id) to fetch the most recent."""
+    path = _research_path("user_valuations.csv")
+    row = {
+        "timestamp": _iso_now(),
+        "espn_id": int(espn_id),
+        "valuation": float(valuation),
+    }
+    df = pd.DataFrame([row])
+    df.to_csv(path, mode="a", header=not path.exists(), index=False)
+
+
+def load_valuations(espn_id: int | None = None) -> pd.DataFrame:
+    """Read persisted user valuations. If espn_id given, filter to that player."""
+    path = _research_path("user_valuations.csv")
+    if not path.exists():
+        return pd.DataFrame(columns=["timestamp", "espn_id", "valuation"])
+    df = pd.read_csv(path)
+    if espn_id is not None:
+        df = df[pd.to_numeric(df["espn_id"], errors="coerce") == int(espn_id)]
+    return df
+
+
+def latest_valuation(espn_id: int) -> tuple[float | None, str | None]:
+    """Return (valuation, timestamp) for the most recent user valuation of
+    the player, or (None, None) if no valuation has been recorded."""
+    df = load_valuations(espn_id)
+    if not len(df):
+        return None, None
+    df = df.sort_values("timestamp")
+    last = df.iloc[-1]
+    return float(last["valuation"]), str(last["timestamp"])
