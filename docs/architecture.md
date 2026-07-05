@@ -26,9 +26,6 @@ config  ──►  data (ingest + parse)  ──►  dataset (unified features) 
 | **Dataset** | `data/dataset.py` | Joins salary + position + age + production → model-ready table |
 | | `data/population.py` | All-NFL skill-player training frame (2016–2025; 5,598 player-seasons) |
 | | `data/context.py` | Per-player baseline/delta/z-scores + `year_type` flag (up/par/down/rookie/partial) |
-| **Models — V1 engine** | `models/production.py` | Per-position production model (HistGBR, OOF R² 0.81) + replacement levels / VOR |
-| | `models/projection.py` | Next-season PPG projection (OOF R² 0.48) + positional age curves |
-| | `models/value.py` | Two-lens fair value (production-anchored VOR + market-fit) → `player_value_2026.csv` |
 | **Models — V2 framework** | `models/components/production.py` | Per-position predicted PPG → [0, 100], recency-weighted |
 | | `models/components/team.py` | Per-position empirical residual regression → multiplier band |
 | | `models/components/age.py` | Logistic decay sigmoid per position |
@@ -39,10 +36,9 @@ config  ──►  data (ingest + parse)  ──►  dataset (unified features) 
 | | `models/components/framework.py` | Orchestrator: builds `player_value_v2_2026.csv` (490 players × 6 components) |
 | **Models — Cap pricing** | `models/pricing.py` | Cap-unit pricing LAYER on V2 quality scores. 4-stage pipeline: per-position replacement baseline → above-baseline DV → non-linear scarcity (α exponent) → rate × age multiplier × multi-year age decay. Writes `data/processed/player_pricing_2026.csv` joined to V2 master by espn_id. V2 master itself is never modified. See [pricing.md](methodology/pricing.md). |
 | **Viz** | `viz/contracts.py`, `viz/cap.py` | Figures (contract timeline, cap distribution/projection, salary-by-position) |
-| | `viz/value.py`, `viz/value_interactive.py`, `viz/summary.py` | V1 fair-value scatters + interactive HTMLs (read V1 outputs) |
 | | `viz/position_components.py` | V2 per-position component grids (one HTML per position) |
-| | `viz/cross_position_variants.py` | V2 weight-tuning explorer — multiple Position-weight variants in one HTML each |
-| | `viz/combine_variants.py` | V2 combine-method workshop viz — 5 candidate Dynasty Value combine methods |
+| | `viz/cross_position_variants.py` | V2 Position-component weight-tuning explorer |
+| | `viz/combine_variants.py` | V2 Dynasty Value combine-method workshop viz |
 | | `viz/pricing_variants.py` | Cap-pricing workshop viz — 4 preset parameter combinations |
 | **App** | `app/Home.py` + `app/pages/*.py` | Streamlit app — over/under board, Player Card, Market/Driver Explorer, Roster, Auction, Trade |
 
@@ -57,20 +53,14 @@ config  ──►  data (ingest + parse)  ──►  dataset (unified features) 
   full-season; don't mix bases in one calculation. See
   [data_dictionary.md → PPG basis policy](data_dictionary.md#ppg-basis-policy).
 
-## V1 vs V2 — coexistence
+## V1 archived (2026-07-05)
 
-The V1 fair-value engine (`models/value.py`) and the V2 component framework
-(`models/components/`) currently coexist:
-
-- **V1** is shipped, validated, and powers the Streamlit app today via
-  `data/processed/player_value_2026.csv`.
-- **V2** is the active development line — interpretable per-component scores
-  per position (Production / Team / OFV / Age / Injury / Position /
-  Intangibles → Dynasty Value), written to `data/processed/player_value_v2_2026.csv`.
-
-The two share upstream data, models (`models/production.py`,
-`models/projection.py`), and `data/context.py`. V1 will be archived once
-the Streamlit app migrates to V2 outputs (planned Phase 6/7).
+The V1 fair-value engine (`models/value.py`, `models/production.py`,
+`models/projection.py`) and V1-specific viz (`viz/value.py`,
+`viz/value_interactive.py`, `viz/summary.py`) have been deleted from the
+current branch after V2 shipped through the Streamlit app. Git history on
+`main` preserves the V1 code if it ever needs to be revived. V2's component
+framework + pricing engine is now the only live engine.
 
 ## Known coupling
 

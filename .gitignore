@@ -40,3 +40,5 @@ figures/
 .DS_Store
 .idea/
 .vscode/
+streamlit_log.txt
+streamlit_err.txt

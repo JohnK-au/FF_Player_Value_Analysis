@@ -4,11 +4,15 @@ Machine learning analysis of player performance and contract value for an
 8-team dynasty fantasy football league that uses an offline, NFL-style
 salary cap and contract system.
 
-> **Status:** Active development. The original V1 fair-value engine (production-
-> anchored VOR + market-fit lens) is shipped and powers an interactive Streamlit
-> app. A **V2 six-component scoring framework** (Production, Team, On-Field
-> Value, Age, Injury, Position) is now fully implemented across all four skill
-> positions; integrating it into the app is the next milestone.
+> **Status:** V2 shipped. The **six-component quality framework** (Production,
+> Team, On-Field Value, Age, Injury, Position, Intangibles → Dynasty Value) is
+> live for all four skill positions across 490 priced players. On top of it, a
+> **cap-unit pricing engine** translates quality scores into fair contract
+> values via a 4-stage pipeline (per-position replacement baseline → non-linear
+> elite premium → age-adjusted multi-year decay). Powers an interactive
+> Streamlit app with 5 pages. The prior V1 engine (production-anchored VOR +
+> market-fit lens) is archived on the `main` branch history; V2 is now the
+> only live engine.
 
 ## Purpose
 
@@ -51,35 +55,36 @@ cuts/dead-cap, amnesty, IR) are documented and largely confirmed in
 - ✅ Unified 2026 player dataset + NFL-wide training frame
   (2016–2025, ~5,600 player-seasons, fantasy scoring reconstructed from nflverse)
 
-### Models — V1 fair-value engine (production)
-- ✅ Production model (HistGBR per position, OOF R² 0.81)
-- ✅ Next-season projection model (OOF R² 0.48) + positional age curves
-- ✅ Two-lens fair value (production-anchored VOR with risk-adjusted consistency +
-  market-fit) — `data/processed/player_value_2026.csv`
-- ✅ Projection-based current + dynasty value (multi-year discount across `years_2026`)
-
-### Models — V2 six-component framework ([`docs/methodology/`](docs/methodology/))
+### V2 six-component quality framework ([`docs/methodology/`](docs/methodology/))
 - ✅ **Production** (per-position predicted PPG → [0, 100], recency-weighted)
 - ✅ **Team** (per-position empirical residual regression → multiplier in [0.875, 1.125])
 - ✅ **On-Field Value** = Production × Team multiplier
 - ✅ **Age** (logistic decay sigmoid per position)
 - ✅ **Injury** (durability score from games played + IR designation)
-- ✅ **Position** (cross-position importance via VOR-Deep Total Impact in absolute PPG —
+- ✅ **Position** (cross-position importance via VORP-Deep Total Impact in absolute PPG —
   see [Phase 4.5 v2](docs/methodology/position.md))
-- 🟡 **Intangibles** (stub at neutral 50; reserved for trade-target/coaching-fit signal)
+- 🟡 **Intangibles** (stub at neutral 50; reserved for trade-target / pedigree signal)
 - ✅ **Dynasty Value** combine = OFV 0.55 + Age 0.20 + Injury 0.15 + Position 0.05 + Intangibles 0.05
 - Output: `data/processed/player_value_v2_2026.csv` (490 priced players: 155 rostered + 335 dynasty-league FAs)
 
-### Interactive Streamlit app (`src/app/`)
-- ✅ **Home** — over/under board with horizon toggle, filters, colored surplus styling
-- ✅ **Player Card** — per-player deep-dive with multi-year projection chart + context
-- ✅ **Market / Driver Explorer** — driver ranking, relationship explorer, what-if simulator, over-pay map
-- ✅ **Roster** — team selector + cap summary + drop/extend/tag/keep recommendations
-- ✅ **Auction Bid Targets** — FA pool ranked by `max_fair_bid`, per-position tabs
-- ✅ **Trade Evaluator** — two-sided trade with net current + dynasty value/cap deltas
+### Cap-unit pricing engine ([`docs/methodology/pricing.md`](docs/methodology/pricing.md))
+- ✅ **4-stage pipeline** on top of Dynasty Value:
+  1. Per-position replacement baseline (user-picked: QB=41, RB=29, WR=34, TE=31)
+  2. `above_baseline_dv = max(0, dynasty_value - baseline)` (mid-tier collapse)
+  3. `scarcity_value = above_baseline_dv ^ α` (α=1.25 non-linear elite premium)
+  4. `rate = pool / sum(scarcity)` × per-year age multiplier × multi-year age decay
+- ✅ Empirical pool with `pool_scale=1.45` (model implies league underspends skill ~30%)
+- ✅ Sign convention: `surplus = salary − fair` (positive = overpaid, red)
+- Output: `data/processed/player_pricing_2026.csv` (joins to V2 master on `espn_id`)
 
-> Currently reads the V1 engine output (`player_value_2026.csv`). Migration to
-> the V2 framework outputs is the next milestone.
+### Interactive Streamlit app (V2, `src/app/`)
+- ✅ **Home** — over/under board across 490 players; filters on pos/team/status/name; horizon toggle (2026 or dynasty)
+- ✅ **Player Card** — 6-component quality bars with league / top-3 / replacement reference overlays; pricing decomposition (DV → above baseline → scarcity → age); multi-year projection with age decay; peer top-10 at position
+- ✅ **Roster** — team cap summary; per-position breakdown (count / avg DV / startable count / net surplus); DROP/TAG/EXTEND/KEEP recommendations
+- ✅ **Trade Evaluator** — two-sided player swap with per-side totals + net delta strip (salary / DV / OFV / fair / surplus) + plain-English verdict
+- ✅ **Auction Bidder** — FA pool filtered/sorted by fair max-bid; per-position tabs; roster-fit sidebar with cap-space budgeting
+
+Run with `streamlit run src/app/Home.py`.
 
 ## Tech Stack
 
@@ -113,11 +118,9 @@ cuts/dead-cap, amnesty, IR) are documented and largely confirmed in
 │   ├── data/                      # ingestion + parsing (sheets, ESPN, nflverse, cap, contracts, dataset, context)
 │   ├── models/
 │   │   ├── components/            # V2 six-component framework (one module per component + combine + framework orchestrator)
-│   │   ├── production.py          # V1 production model
-│   │   ├── projection.py          # V1 next-season projection model + age curves
-│   │   └── value.py               # V1 fair-value engine (two-lens)
-│   ├── viz/                       # figures + interactive HTMLs
-│   └── app/                       # Streamlit app (Home + 5 pages)
+│   │   └── pricing.py             # 4-stage cap-unit pricing engine (layered on V2 quality scores)
+│   ├── viz/                       # figures + interactive HTMLs (workshop tools for weight/param tuning)
+│   └── app/                       # Streamlit app (Home + Player Card + Roster + Trade + Auction)
 ├── .env.example                   # template for local config
 ├── requirements.txt
 └── README.md
@@ -163,20 +166,19 @@ from a logged-in browser when calls return HTTP 401.
 .venv/bin/python -m src.data.population     # all-NFL training frame
 .venv/bin/python -m src.data.context        # per-player baseline/delta/z + year_type
 
-# V1 engine
-.venv/bin/python -m src.models.production   # production model + replacement levels
-.venv/bin/python -m src.models.projection   # next-season projection + age curves
-.venv/bin/python -m src.models.value        # fair value (production + market lenses)
+# V2 framework + pricing
+.venv/bin/python -m src.models.components.framework   # build V2 master CSV (490 players x 6 components)
+.venv/bin/python -m src.models.pricing                # build pricing CSV (fair values, surplus)
 
-# V2 framework
-.venv/bin/python -m src.models.components.framework   # build master CSV
-.venv/bin/python -m src.viz.position_components WR    # per-position HTML viz
-.venv/bin/python -m src.viz.cross_position_variants   # cross-position weight variants
+# Workshop tools (param/weight tuning)
+.venv/bin/python -m src.viz.position_components WR    # per-position component grid HTML
+.venv/bin/python -m src.viz.cross_position_variants   # Position component weight variants
+.venv/bin/python -m src.viz.combine_variants          # Dynasty Value combine variants
+.venv/bin/python -m src.viz.pricing_variants          # pricing pipeline preset variants
 
 # Figures
 .venv/bin/python -m src.viz.contracts   # per-team contract timelines
 .venv/bin/python -m src.viz.cap         # cap distribution + projection + salary-by-position
-.venv/bin/python -m src.viz.value       # value scatters
 
 # Streamlit app
 streamlit run src/app/Home.py
