@@ -115,8 +115,13 @@ id_to_name = {v: k for k, v in name_to_id.items()}
 
 
 def _sync_override_widgets_to_current() -> None:
-    """Push current_a / current_b names into the override_a/b selectbox state so
-    the widgets show the new selection instead of the stale user-picked one."""
+    """Push current_a / current_b names into the override_a/b selectbox state.
+
+    MUST be called BEFORE the selectbox widgets are instantiated on the current
+    run -- Streamlit forbids modifying a widget's session_state key once the
+    widget has been rendered. See the top-level sync block below for the
+    correct call site after a pick/skip/shuffle rerun.
+    """
     a_name = id_to_name.get(int(st.session_state.current_a))
     b_name = id_to_name.get(int(st.session_state.current_b))
     if a_name:
@@ -139,6 +144,19 @@ if shuffle_clicked:
     if pair:
         st.session_state.current_a, st.session_state.current_b = pair
         _sync_override_widgets_to_current()
+
+# --- Top-level resync (runs BEFORE the selectbox renders) --------------------
+# After a pick/skip rerun, current_a/current_b may have been rotated to new
+# players but the widget's session_state ["override_a"] still holds the OLD
+# name. We sync here (widget not yet instantiated -> setting is legal).
+if "current_a" in st.session_state and "override_a" in st.session_state:
+    expected_a = id_to_name.get(int(st.session_state["current_a"]))
+    if expected_a is not None and st.session_state["override_a"] != expected_a:
+        st.session_state["override_a"] = expected_a
+if "current_b" in st.session_state and "override_b" in st.session_state:
+    expected_b = id_to_name.get(int(st.session_state["current_b"]))
+    if expected_b is not None and st.session_state["override_b"] != expected_b:
+        st.session_state["override_b"] = expected_b
 
 # Guard for empty pool
 if "current_a" not in st.session_state:
@@ -453,8 +471,11 @@ if active_choice is not None:
         if new_pair:
             st.session_state.current_a, st.session_state.current_b = new_pair
 
-    # Sync selectbox widgets so the new pair actually shows.
-    _sync_override_widgets_to_current()
+    # NOTE: do NOT call _sync_override_widgets_to_current() here -- the selectbox
+    # widget has already been instantiated on this run (rendered above the pick
+    # buttons), so Streamlit forbids writing to its session_state key. The
+    # top-level resync block runs on the next rerun and updates the widget
+    # state before the selectbox re-instantiates.
     st.rerun()
 
 # --- Model reveal panel (only after a pick; shows the LAST comparison) ------
