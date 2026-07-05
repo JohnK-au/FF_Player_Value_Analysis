@@ -33,6 +33,7 @@ data/raw/
 !data/research/intangibles_overrides.csv
 !data/research/user_comparisons.csv
 !data/research/player_comments.csv
+!data/research/user_valuations.csv
 
 # Figures (contain league data — names, salaries)
 figures/

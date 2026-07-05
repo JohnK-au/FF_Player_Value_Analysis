@@ -31,9 +31,9 @@ import streamlit as st  # noqa: E402
 
 from _lib import (  # noqa: E402
     COMPONENT_COLS, POS_ORDER,
-    fmt_float_or_dash, fmt_int_or_dash, load_comparisons, load_comments,
-    load_master, load_season_stats, player_headshot_url, save_comment,
-    save_comparison, team_logo_url,
+    fmt_float_or_dash, fmt_int_or_dash, latest_valuation, load_comparisons,
+    load_comments, load_master, load_season_stats, player_headshot_url,
+    save_comment, save_comparison, save_valuation, team_logo_url,
 )
 
 st.set_page_config(page_title="Compare (V2)", layout="wide")
@@ -268,6 +268,28 @@ def _render_side(row: pd.Series, label: str, side_key: str) -> str | None:
             if bits:
                 st.caption("  ·  ".join(bits))
 
+        # --- User's 1-year valuation (optional, non-anonymous only) ---
+        if not anonymous:
+            val_cur, val_ts = latest_valuation(int(row["espn_id"]))
+            vc1, vc2 = st.columns([2, 1])
+            with vc1:
+                val_key = f"valuation_input_{side_key}"
+                default_val = float(val_cur) if val_cur is not None else 0.0
+                v_new = st.number_input(
+                    "Your 1-yr valuation (cap units)",
+                    min_value=0.0, max_value=500.0,
+                    value=default_val, step=1.0,
+                    key=val_key,
+                    help="Your subjective single-season value for this player. "
+                         "Compared to the model's fair_value_2026 in the reveal panel.",
+                )
+            with vc2:
+                if st.button("Save valuation", key=f"save_v_{side_key}"):
+                    save_valuation(int(row["espn_id"]), float(v_new))
+                    st.success(f"Saved: {v_new:.0f}")
+            if val_cur is not None:
+                st.caption(f"Latest saved: **{val_cur:.0f}** (as of `{val_ts}`).")
+
         # Comment box (only in non-anonymous mode; would leak identity via comments)
         if not anonymous:
             comment_key = f"comment_{side_key}"
@@ -432,6 +454,35 @@ if last is not None:
                 delta_color="off",
                 help=f"{name_a}: {val_a}  ·  {name_b}: {val_b}",
             )
+
+    # --- User valuation vs model fair_value_2026 (if the user has saved one) --
+    val_a_user, _ = latest_valuation(int(prev_a.get("espn_id") or 0))
+    val_b_user, _ = latest_valuation(int(prev_b.get("espn_id") or 0))
+    if val_a_user is not None or val_b_user is not None:
+        st.markdown("**Your 1-year valuations vs model's Fair 2026**")
+        vv1, vv2 = st.columns(2)
+        for side_col, name, prev_row, val_user in [
+            (vv1, name_a, prev_a, val_a_user),
+            (vv2, name_b, prev_b, val_b_user),
+        ]:
+            with side_col:
+                model_fair = prev_row.get("fair_value_2026")
+                if val_user is None:
+                    st.metric(f"{name}: your value", "-",
+                              help="No saved valuation yet. Enter one on the player's card.")
+                else:
+                    if pd.notna(model_fair):
+                        gap = float(val_user) - float(model_fair)
+                        st.metric(
+                            f"{name}: your value",
+                            f"{val_user:.0f}",
+                            delta=f"{gap:+.0f} vs model ({float(model_fair):.0f})",
+                            delta_color="normal",
+                            help="Positive: you value them higher than the model. "
+                                 "Negative: you value them lower.",
+                        )
+                    else:
+                        st.metric(f"{name}: your value", f"{val_user:.0f}")
 
 # --- Sidebar: session stats -------------------------------------------------
 

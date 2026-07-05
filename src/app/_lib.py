@@ -292,3 +292,39 @@ def load_comments(espn_id: int | None = None) -> pd.DataFrame:
     if espn_id is not None:
         df = df[pd.to_numeric(df["espn_id"], errors="coerce") == int(espn_id)]
     return df
+
+
+def save_valuation(espn_id: int, valuation: float) -> None:
+    """Append the user's 1-year cap-unit valuation for a player to
+    data/research/user_valuations.csv. Multiple entries per player allowed
+    (running log); use latest_valuation(espn_id) to fetch the most recent."""
+    path = _research_path("user_valuations.csv")
+    row = {
+        "timestamp": _iso_now(),
+        "espn_id": int(espn_id),
+        "valuation": float(valuation),
+    }
+    df = pd.DataFrame([row])
+    df.to_csv(path, mode="a", header=not path.exists(), index=False)
+
+
+def load_valuations(espn_id: int | None = None) -> pd.DataFrame:
+    """Read persisted user valuations. If espn_id given, filter to that player."""
+    path = _research_path("user_valuations.csv")
+    if not path.exists():
+        return pd.DataFrame(columns=["timestamp", "espn_id", "valuation"])
+    df = pd.read_csv(path)
+    if espn_id is not None:
+        df = df[pd.to_numeric(df["espn_id"], errors="coerce") == int(espn_id)]
+    return df
+
+
+def latest_valuation(espn_id: int) -> tuple[float | None, str | None]:
+    """Return (valuation, timestamp) for the most recent user valuation of
+    the player, or (None, None) if no valuation has been recorded."""
+    df = load_valuations(espn_id)
+    if not len(df):
+        return None, None
+    df = df.sort_values("timestamp")
+    last = df.iloc[-1]
+    return float(last["valuation"]), str(last["timestamp"])
