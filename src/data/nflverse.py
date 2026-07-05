@@ -61,6 +61,29 @@ def _build_attributes(season: int, as_of: str) -> pd.DataFrame:
     return r[["espn_id", "player_name", "age", "years_exp"]].reset_index(drop=True)
 
 
+# --- Player headshots (for the Streamlit Compare page) ------------------------
+
+def player_headshots(season: int = DEFAULT_SEASON, refresh: bool = False) -> pd.DataFrame:
+    """Per-player headshot URL, keyed by espn_id. Cached to CSV under processed/.
+
+    Pulled once from ``nfl.import_seasonal_rosters([season])``. Enables the
+    Compare page to display player photos via ``st.image(url)`` without an
+    extra API round-trip per render.
+    """
+    out_path = PROCESSED_DIR / "player_headshots.csv"
+    if out_path.exists() and not refresh:
+        return pd.read_csv(out_path)
+
+    import nfl_data_py as nfl
+    r = nfl.import_seasonal_rosters([season])[["espn_id", "headshot_url"]].copy()
+    r["espn_id"] = pd.to_numeric(r["espn_id"], errors="coerce").astype("Int64")
+    r = r.dropna(subset=["espn_id", "headshot_url"]).drop_duplicates("espn_id").reset_index(drop=True)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    r.to_csv(out_path, index=False)
+    return r
+
+
 # --- Draft capital & combine (player-level, immutable → cached once) ----------
 
 def draft_capital(value_chart: str = "otc", refresh: bool = False) -> pd.DataFrame:

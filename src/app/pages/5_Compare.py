@@ -1,0 +1,370 @@
+"""V2 Player Comparison Page ("This or That").
+
+Presents two players side by side. User picks who is more valuable across three
+lenses: 2026 (single-season), Dynasty (contract-length), Real-life NFL (on-field).
+
+Mechanics:
+- Winner-stays king-of-the-hill: after each pick, the loser's slot cycles to a
+  new random challenger; the winner remains for streak comparisons.
+- Random shuffle default with manual dropdown overrides at any point.
+- Anonymous mode hides name, teams, and all salary-derived fields for
+  stat-blind evaluation.
+- Position filter constrains the challenger pool.
+
+Every selection persists to data/research/user_comparisons.csv. Per-player
+comment textareas persist to data/research/player_comments.csv. Both files
+are allowlisted in .gitignore.
+"""
+from __future__ import annotations
+
+import random
+import sys
+from pathlib import Path
+
+_THIS = Path(__file__).resolve()
+for p in (_THIS.parents[1], _THIS.parents[3]):
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
+
+import pandas as pd  # noqa: E402
+import streamlit as st  # noqa: E402
+
+from _lib import (  # noqa: E402
+    COMPONENT_COLS, POS_ORDER,
+    fmt_float_or_dash, fmt_int_or_dash, load_comparisons, load_comments,
+    load_master, player_headshot_url, save_comment, save_comparison,
+    team_logo_url,
+)
+
+st.set_page_config(page_title="Compare (V2)", layout="wide")
+st.title("This or That -- Player Comparison")
+
+master = load_master()
+
+# --- Session state init -----------------------------------------------------
+
+def _random_pair(pool: pd.DataFrame, exclude: set[int] | None = None) -> tuple[int, int] | None:
+    ids = pool["espn_id"].dropna().astype(int).tolist()
+    if exclude:
+        ids = [i for i in ids if i not in exclude]
+    if len(ids) < 2:
+        return None
+    a, b = random.sample(ids, 2)
+    return int(a), int(b)
+
+
+def _random_challenger(pool: pd.DataFrame, exclude: set[int]) -> int | None:
+    ids = [int(i) for i in pool["espn_id"].dropna().astype(int).tolist() if int(i) not in exclude]
+    if not ids:
+        return None
+    return random.choice(ids)
+
+
+def _filtered_pool(pos_filter: list[str]) -> pd.DataFrame:
+    if not pos_filter:
+        return master[master["position_group"].isin(POS_ORDER)]
+    return master[master["position_group"].isin(pos_filter)]
+
+
+# --- Top controls -----------------------------------------------------------
+
+c1, c2, c3, c4 = st.columns([1.6, 1.0, 1.6, 1.0])
+category = c1.radio(
+    "Evaluation lens",
+    options=["2026 value", "Dynasty value", "Real-life NFL"],
+    horizontal=True,
+    help="Determines which model column the reveal panel highlights. "
+         "All 3 comparisons are logged regardless of which is 'active'."
+)
+anonymous = c2.toggle(
+    "Anonymous mode",
+    value=False,
+    help="Hide names, teams, salaries, and photos. Stat-blind evaluation.",
+)
+pos_filter = c3.multiselect(
+    "Position filter (empty = cross-position)",
+    POS_ORDER,
+    default=[],
+    help="Only affects the challenger slot. Winner-stays overrides position.",
+)
+shuffle_clicked = c4.button("Shuffle both", use_container_width=True)
+
+# Initialize / re-shuffle the pair -------------------------------------------
+pool = _filtered_pool(pos_filter)
+
+if "current_a" not in st.session_state or "current_b" not in st.session_state or shuffle_clicked:
+    pair = _random_pair(pool)
+    if pair:
+        st.session_state.current_a, st.session_state.current_b = pair
+
+# Guard for empty pool
+if "current_a" not in st.session_state:
+    st.warning("Not enough players in the filtered pool. Broaden the position filter.")
+    st.stop()
+
+# Row lookup ----------------------------------------------------------------
+
+def _row(espn_id: int) -> pd.Series | None:
+    r = master[master["espn_id"] == espn_id]
+    if not len(r):
+        return None
+    return r.iloc[0]
+
+
+row_a = _row(st.session_state.current_a)
+row_b = _row(st.session_state.current_b)
+
+if row_a is None or row_b is None:
+    st.error("Could not resolve one of the current players. Try Shuffle.")
+    st.stop()
+
+# --- Manual override dropdowns ---------------------------------------------
+
+sel1, sel2 = st.columns(2)
+all_names = sorted(master["player"].dropna().unique().tolist())
+name_to_id = master.dropna(subset=["player", "espn_id"]).set_index("player")["espn_id"].astype(int).to_dict()
+id_to_name = {v: k for k, v in name_to_id.items()}
+cur_name_a = id_to_name.get(int(st.session_state.current_a), all_names[0])
+cur_name_b = id_to_name.get(int(st.session_state.current_b), all_names[1])
+override_a = sel1.selectbox("Override Player A", all_names, index=all_names.index(cur_name_a), key="override_a")
+override_b = sel2.selectbox("Override Player B", all_names, index=all_names.index(cur_name_b), key="override_b")
+if name_to_id.get(override_a) != int(st.session_state.current_a):
+    st.session_state.current_a = int(name_to_id[override_a])
+    st.rerun()
+if name_to_id.get(override_b) != int(st.session_state.current_b):
+    st.session_state.current_b = int(name_to_id[override_b])
+    st.rerun()
+
+# --- Side-by-side panels ---------------------------------------------------
+
+CATEGORY_TO_COL = {
+    "2026 value": "fair_value_2026",
+    "Dynasty value": "fair_value_dynasty",
+    "Real-life NFL": "on_field_value",
+}
+
+
+def _render_side(row: pd.Series, label: str, side_key: str) -> str | None:
+    """Return 'a'|'b'|None depending on whether user clicked pick. label = 'A' or 'B'."""
+    with st.container(border=True):
+        # Header: name + logo + photo (or anonymized)
+        head_cols = st.columns([1, 3, 1])
+        with head_cols[0]:
+            if not anonymous:
+                url = player_headshot_url(row.get("espn_id"))
+                if url:
+                    st.image(url, width=80)
+        with head_cols[1]:
+            if anonymous:
+                st.subheader(f"Player {label}")
+                st.caption(f"{row.get('position_group', '-')}  ·  age {fmt_float_or_dash(row.get('age'), n=1)}")
+            else:
+                st.subheader(str(row.get("player", "?")))
+                st.caption(
+                    f"{row.get('position_group', '-')}  ·  age "
+                    f"{fmt_float_or_dash(row.get('age'), n=1)}  ·  "
+                    f"NFL {row.get('nfl_team_2025', '-')}  ·  league team "
+                    f"{row.get('team') or 'FA'}"
+                )
+        with head_cols[2]:
+            if not anonymous:
+                lu = team_logo_url(row.get("nfl_team_2025"))
+                if lu:
+                    st.image(lu, width=60)
+
+        # Contract row (hidden in anonymous)
+        if not anonymous:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Salary 2026", fmt_int_or_dash(row.get("salary_2026")))
+            c2.metric("Yrs remaining", fmt_int_or_dash(row.get("years_2026")))
+            c3.metric("Roster status", str(row.get("roster_status", "-")))
+
+        # Headline metrics
+        v1, v2, v3, v4 = st.columns(4)
+        v1.metric("Dynasty Value", fmt_float_or_dash(row.get("dynasty_value"), n=1))
+        v2.metric("On-Field Value", fmt_float_or_dash(row.get("on_field_value"), n=1))
+        v3.metric("Fair 2026", fmt_int_or_dash(row.get("fair_value_2026")))
+        v4.metric("Fair Dynasty", fmt_int_or_dash(row.get("fair_value_dynasty")))
+
+        # Component scores mini-table
+        with st.expander("6-component breakdown", expanded=False):
+            comp_data = []
+            for c in COMPONENT_COLS:
+                lbl = c.replace("_value", "").replace("_", " ").title()
+                comp_data.append({"component": lbl, "score": float(row.get(c) or 0)})
+            comp_df = pd.DataFrame(comp_data)
+            st.dataframe(
+                comp_df.style.format({"score": "{:.1f}"}).background_gradient(
+                    subset=["score"], cmap="RdYlGn", vmin=0, vmax=100),
+                hide_index=True, use_container_width=True,
+            )
+            if not anonymous:
+                st.caption(f"Above baseline DV: {fmt_float_or_dash(row.get('above_baseline_dv'), n=1)}  "
+                           f"·  replacement DV: {fmt_float_or_dash(row.get('replacement_dv'), n=1)}")
+
+        # Comment box (only in non-anonymous mode; would leak identity via comments)
+        if not anonymous:
+            comment_key = f"comment_{side_key}"
+            if comment_key not in st.session_state:
+                st.session_state[comment_key] = ""
+            comment_txt = st.text_area(
+                "Add a note about this player",
+                value=st.session_state[comment_key],
+                key=f"ta_{side_key}",
+                height=80,
+                placeholder="e.g., traded to Buffalo this offseason",
+            )
+            if st.button(f"Save note ({row.get('player', label)})", key=f"save_c_{side_key}"):
+                if comment_txt.strip():
+                    save_comment(int(row["espn_id"]), comment_txt)
+                    st.session_state[comment_key] = ""
+                    st.success("Note saved.")
+                else:
+                    st.info("Empty note ignored.")
+
+            # Show recent comments for this player
+            prior = load_comments(int(row["espn_id"]))
+            if len(prior):
+                with st.expander(f"Prior notes ({len(prior)})", expanded=False):
+                    for _, r in prior.tail(5).iterrows():
+                        st.caption(f"**{r['timestamp']}** — {r['comment']}")
+
+        # Selection button
+        pick = st.button(
+            f"{'Player ' + label if anonymous else str(row.get('player', label))} is more valuable",
+            key=f"pick_{side_key}",
+            use_container_width=True,
+            type="primary",
+        )
+        return "a" if (pick and label == "A") else ("b" if (pick and label == "B") else None)
+
+
+col_a, col_b = st.columns(2)
+with col_a:
+    picked_a = _render_side(row_a, "A", "a")
+with col_b:
+    picked_b = _render_side(row_b, "B", "b")
+
+# Middle: skip/even -------------------------------------------------------
+skip_clicked = st.button("Skip / even (both cycle)", use_container_width=True)
+
+# --- Handle selection logic ------------------------------------------------
+
+active_choice: str | None = None
+if picked_a:
+    active_choice = "a"
+elif picked_b:
+    active_choice = "b"
+elif skip_clicked:
+    active_choice = "skip"
+
+# --- Model reveal (before rotating so we can compute with current pair) ----
+
+def _model_pick(row_a: pd.Series, row_b: pd.Series, col: str) -> tuple[str, float]:
+    """Return ('a'|'b'|'tie', abs_gap)."""
+    a_val = float(row_a.get(col) or 0)
+    b_val = float(row_b.get(col) or 0)
+    diff = a_val - b_val
+    if abs(diff) < 0.5:
+        return "tie", 0.0
+    return ("a" if diff > 0 else "b"), abs(diff)
+
+
+if active_choice is not None:
+    # Save + then rotate
+    category_key = {"2026 value": "season", "Dynasty value": "dynasty", "Real-life NFL": "reallife"}[category]
+    save_comparison(
+        category=category_key,
+        player_a_espn_id=int(row_a["espn_id"]),
+        player_b_espn_id=int(row_b["espn_id"]),
+        choice=active_choice,
+        anonymous_mode=anonymous,
+    )
+
+    # Track alignment (skip counts as no-info)
+    if active_choice != "skip":
+        model_col = CATEGORY_TO_COL[category]
+        m_choice, _gap = _model_pick(row_a, row_b, model_col)
+        agree = (m_choice == active_choice) if m_choice != "tie" else None
+        st.session_state.setdefault("alignment_log", []).append(
+            {"category": category_key, "agreed": agree}
+        )
+
+    # Rotate: winner stays; loser cycles to a new random challenger.
+    other_id = st.session_state.current_b if active_choice == "a" else st.session_state.current_a
+    if active_choice == "a":
+        new_b = _random_challenger(pool, exclude={int(st.session_state.current_a)})
+        if new_b:
+            st.session_state.current_b = int(new_b)
+    elif active_choice == "b":
+        # B moves to A slot; new challenger goes into B.
+        st.session_state.current_a = int(st.session_state.current_b)
+        new_b = _random_challenger(pool, exclude={int(st.session_state.current_a)})
+        if new_b:
+            st.session_state.current_b = int(new_b)
+    else:  # skip
+        new_pair = _random_pair(pool)
+        if new_pair:
+            st.session_state.current_a, st.session_state.current_b = new_pair
+
+    st.rerun()
+
+# --- Model reveal panel (shown for the CURRENT pair, always visible) -------
+
+st.markdown("---")
+st.subheader("Model comparison for the current pair")
+reveal_cols = st.columns(3)
+name_a_show = f"Player A" if anonymous else (row_a.get("player", "A"))
+name_b_show = f"Player B" if anonymous else (row_b.get("player", "B"))
+
+for i, (label, col) in enumerate([
+    ("2026 value (fair_value_2026)", "fair_value_2026"),
+    ("Dynasty value (fair_value_dynasty)", "fair_value_dynasty"),
+    ("Real-life NFL (on_field_value)", "on_field_value"),
+]):
+    with reveal_cols[i]:
+        m_choice, gap = _model_pick(row_a, row_b, col)
+        winner = name_a_show if m_choice == "a" else (name_b_show if m_choice == "b" else "Tie")
+        val_a = fmt_float_or_dash(row_a.get(col), n=1)
+        val_b = fmt_float_or_dash(row_b.get(col), n=1)
+        active = (col == CATEGORY_TO_COL[category])
+        badge = " ⭐" if active else ""
+        st.metric(
+            f"{label}{badge}",
+            f"{winner}",
+            delta=f"+{gap:.1f}" if m_choice != "tie" else "even",
+            delta_color="off",
+            help=f"A: {val_a}  ·  B: {val_b}",
+        )
+
+# --- Sidebar: session stats -------------------------------------------------
+
+with st.sidebar:
+    st.subheader("Session progress")
+    all_comps = load_comparisons()
+    st.metric("Total comparisons logged", len(all_comps))
+    if len(all_comps):
+        breakdown = all_comps["category"].value_counts().reindex(
+            ["season", "dynasty", "reallife"]).fillna(0).astype(int)
+        st.caption(
+            f"season: **{breakdown.get('season', 0)}**  ·  "
+            f"dynasty: **{breakdown.get('dynasty', 0)}**  ·  "
+            f"reallife: **{breakdown.get('reallife', 0)}**"
+        )
+    st.markdown("---")
+    log = st.session_state.get("alignment_log", [])
+    if log:
+        df = pd.DataFrame(log)
+        st.subheader("Model alignment (this session)")
+        for cat in ["season", "dynasty", "reallife"]:
+            sub = df[(df["category"] == cat) & (df["agreed"].notna())]
+            if len(sub):
+                agree_pct = 100.0 * sub["agreed"].sum() / len(sub)
+                st.metric(cat, f"{agree_pct:.0f}%",
+                          delta=f"{int(sub['agreed'].sum())}/{len(sub)}", delta_color="off")
+
+    st.markdown("---")
+    st.caption(
+        f"Filtered pool: **{len(pool)}** players.  "
+        "Selections and comments persist to `data/research/`."
+    )

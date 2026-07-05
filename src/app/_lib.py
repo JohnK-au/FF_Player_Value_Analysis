@@ -26,6 +26,12 @@ TEAMS = ["Nate", "Seeb", "Silv", "Kerr", "Will", "Drew", "Couc", "Haft"]
 MY_TEAM = "Kerr"
 ROSTER_STATUSES = ["active", "extension", "rookie", "practice_squad", "fa"]
 
+# ESPN CDN pattern for NFL team logos (2-3 char team abbreviation).
+TEAM_LOGO_URL_TEMPLATE = "https://a.espncdn.com/i/teamlogos/nfl/500/{team}.png"
+
+# User-input persistence files (allowlisted in .gitignore).
+RESEARCH_DIR_NAME = "research"
+
 # All 6 V2 component columns for card breakdowns / roster views.
 COMPONENT_COLS = [
     "production_value", "team_value", "age_value",
@@ -147,3 +153,107 @@ def team_roster(master: pd.DataFrame, team: str) -> pd.DataFrame:
 def fa_pool(master: pd.DataFrame) -> pd.DataFrame:
     """Return dynasty-league free agents (roster_status == 'fa')."""
     return master[master["roster_status"] == "fa"].copy()
+
+
+# --- Team logos + player headshots (for the Compare page) --------------------
+
+def team_logo_url(team_abbr: str | None) -> str | None:
+    """Return ESPN CDN logo URL for a 2-3 char NFL team abbreviation, or None."""
+    if not team_abbr or (isinstance(team_abbr, float) and pd.isna(team_abbr)):
+        return None
+    return TEAM_LOGO_URL_TEMPLATE.format(team=str(team_abbr).lower())
+
+
+@st.cache_data(show_spinner="Loading player headshots...")
+def load_headshots() -> dict[int, str]:
+    """espn_id -> headshot URL. Built once from data/processed/player_headshots.csv
+    (see src/data/nflverse.py::player_headshots)."""
+    from src.config import PROCESSED_DIR
+    path = PROCESSED_DIR / "player_headshots.csv"
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path)
+    df = df.dropna(subset=["espn_id", "headshot_url"])
+    df["espn_id"] = pd.to_numeric(df["espn_id"], errors="coerce").astype("Int64")
+    return {int(r["espn_id"]): str(r["headshot_url"]) for _, r in df.iterrows() if pd.notna(r["espn_id"])}
+
+
+def player_headshot_url(espn_id) -> str | None:
+    """Return headshot URL for an espn_id, or None if missing."""
+    if pd.isna(espn_id):
+        return None
+    heads = load_headshots()
+    return heads.get(int(espn_id))
+
+
+# --- User-input persistence: comparisons + comments ---------------------------
+
+def _research_path(filename: str) -> Path:
+    """Path under data/research/ (created if missing)."""
+    from src.config import PROCESSED_DIR
+    p = PROCESSED_DIR.parent / RESEARCH_DIR_NAME
+    p.mkdir(parents=True, exist_ok=True)
+    return p / filename
+
+
+def _iso_now() -> str:
+    """UTC ISO 8601 timestamp for logging."""
+    import datetime as _dt
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def save_comparison(
+    category: str,
+    player_a_espn_id: int,
+    player_b_espn_id: int,
+    choice: str,
+    anonymous_mode: bool,
+) -> None:
+    """Append one comparison row to data/research/user_comparisons.csv."""
+    path = _research_path("user_comparisons.csv")
+    row = {
+        "timestamp": _iso_now(),
+        "category": category,
+        "player_a_espn_id": int(player_a_espn_id),
+        "player_b_espn_id": int(player_b_espn_id),
+        "choice": choice,
+        "anonymous_mode": bool(anonymous_mode),
+    }
+    df = pd.DataFrame([row])
+    df.to_csv(path, mode="a", header=not path.exists(), index=False)
+
+
+def save_comment(espn_id: int, comment: str) -> None:
+    """Append one comment row to data/research/player_comments.csv."""
+    if not comment or not comment.strip():
+        return
+    path = _research_path("player_comments.csv")
+    row = {
+        "timestamp": _iso_now(),
+        "espn_id": int(espn_id),
+        "comment": comment.strip(),
+    }
+    df = pd.DataFrame([row])
+    df.to_csv(path, mode="a", header=not path.exists(), index=False)
+
+
+def load_comparisons() -> pd.DataFrame:
+    """Read all persisted comparison choices. Empty DataFrame if none yet."""
+    path = _research_path("user_comparisons.csv")
+    if not path.exists():
+        return pd.DataFrame(columns=[
+            "timestamp", "category",
+            "player_a_espn_id", "player_b_espn_id", "choice", "anonymous_mode",
+        ])
+    return pd.read_csv(path)
+
+
+def load_comments(espn_id: int | None = None) -> pd.DataFrame:
+    """Read persisted comments. If espn_id given, filter to that player."""
+    path = _research_path("player_comments.csv")
+    if not path.exists():
+        return pd.DataFrame(columns=["timestamp", "espn_id", "comment"])
+    df = pd.read_csv(path)
+    if espn_id is not None:
+        df = df[pd.to_numeric(df["espn_id"], errors="coerce") == int(espn_id)]
+    return df
