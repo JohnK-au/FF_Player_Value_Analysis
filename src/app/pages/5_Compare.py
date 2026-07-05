@@ -32,14 +32,25 @@ import streamlit as st  # noqa: E402
 from _lib import (  # noqa: E402
     COMPONENT_COLS, POS_ORDER,
     fmt_float_or_dash, fmt_int_or_dash, load_comparisons, load_comments,
-    load_master, player_headshot_url, save_comment, save_comparison,
-    team_logo_url,
+    load_master, load_season_stats, player_headshot_url, save_comment,
+    save_comparison, team_logo_url,
 )
 
 st.set_page_config(page_title="Compare (V2)", layout="wide")
 st.title("This or That -- Player Comparison")
 
 master = load_master()
+_stats_df = load_season_stats()
+_stats_lookup = {
+    int(r["espn_id"]): r.to_dict()
+    for _, r in _stats_df.dropna(subset=["espn_id"]).iterrows()
+}
+
+
+def _stats_for(espn_id) -> dict:
+    if pd.isna(espn_id):
+        return {}
+    return _stats_lookup.get(int(espn_id), {})
 
 # --- Session state init -----------------------------------------------------
 
@@ -212,28 +223,50 @@ def _render_side(row: pd.Series, label: str, side_key: str) -> str | None:
             c2.metric("Yrs remaining", fmt_int_or_dash(row.get("years_2026")))
             c3.metric("Roster status", str(row.get("roster_status", "-")))
 
-        # Headline metrics
-        v1, v2, v3, v4 = st.columns(4)
-        v1.metric("Dynasty Value", fmt_float_or_dash(row.get("dynasty_value"), n=1))
-        v2.metric("On-Field Value", fmt_float_or_dash(row.get("on_field_value"), n=1))
-        v3.metric("Fair 2026", fmt_int_or_dash(row.get("fair_value_2026")))
-        v4.metric("Fair Dynasty", fmt_int_or_dash(row.get("fair_value_dynasty")))
+        # --- 2025 season stats (the "real" numbers to base your judgement on) --
+        stats = _stats_for(row.get("espn_id"))
+        pos = row.get("position_group", "-")
+        games_25 = stats.get("games_2025")
+        ppg_25 = stats.get("ppg_2025")
+        ppg_24 = stats.get("ppg_2024")
+        fpts_25 = stats.get("points_2025")
+        snap_25 = stats.get("snap_pct_2025")
 
-        # Component scores mini-table
-        with st.expander("6-component breakdown", expanded=False):
-            comp_data = []
-            for c in COMPONENT_COLS:
-                lbl = c.replace("_value", "").replace("_", " ").title()
-                comp_data.append({"component": lbl, "score": float(row.get(c) or 0)})
-            comp_df = pd.DataFrame(comp_data)
-            st.dataframe(
-                comp_df.style.format({"score": "{:.1f}"}).background_gradient(
-                    subset=["score"], cmap="RdYlGn", vmin=0, vmax=100),
-                hide_index=True, use_container_width=True,
-            )
-            if not anonymous:
-                st.caption(f"Above baseline DV: {fmt_float_or_dash(row.get('above_baseline_dv'), n=1)}  "
-                           f"·  replacement DV: {fmt_float_or_dash(row.get('replacement_dv'), n=1)}")
+        st.markdown("**2025 season**")
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("Games", fmt_int_or_dash(games_25))
+        if pd.notna(ppg_25) and pd.notna(ppg_24):
+            s2.metric("PPG", f"{float(ppg_25):.1f}",
+                      delta=f"{float(ppg_25) - float(ppg_24):+.1f} vs 2024",
+                      delta_color="normal")
+        elif pd.notna(ppg_25):
+            s2.metric("PPG", f"{float(ppg_25):.1f}")
+        else:
+            s2.metric("PPG", "-")
+        s3.metric("Total FP", fmt_int_or_dash(fpts_25))
+        s4.metric("Snap %", f"{float(snap_25) * 100:.0f}%" if pd.notna(snap_25) else "-")
+
+        # Position-adaptive detail line
+        if pos in ("WR", "TE"):
+            ts = stats.get("target_share_2025")
+            wopr = stats.get("wopr_2025")
+            bits = []
+            if pd.notna(ts):
+                bits.append(f"Target share: **{float(ts) * 100:.1f}%**")
+            if pd.notna(wopr):
+                bits.append(f"WOPR: **{float(wopr):.2f}**")
+            if bits:
+                st.caption("  ·  ".join(bits))
+        elif pos == "RB":
+            carries = stats.get("carries_2025")
+            rush_epa = stats.get("rushing_epa_2025")
+            bits = []
+            if pd.notna(carries):
+                bits.append(f"Carries: **{int(float(carries))}**")
+            if pd.notna(rush_epa):
+                bits.append(f"Rushing EPA: **{float(rush_epa):.1f}**")
+            if bits:
+                st.caption("  ·  ".join(bits))
 
         # Comment box (only in non-anonymous mode; would leak identity via comments)
         if not anonymous:
@@ -304,7 +337,7 @@ def _model_pick(row_a: pd.Series, row_b: pd.Series, col: str) -> tuple[str, floa
 
 
 if active_choice is not None:
-    # Save + then rotate
+    # Save
     category_key = {"2026 value": "season", "Dynasty value": "dynasty", "Real-life NFL": "reallife"}[category]
     save_comparison(
         category=category_key,
@@ -322,6 +355,17 @@ if active_choice is not None:
         st.session_state.setdefault("alignment_log", []).append(
             {"category": category_key, "agreed": agree}
         )
+
+    # Snapshot the just-compared pair so the reveal panel on the NEXT render
+    # shows what the model thought about it (real names, regardless of anon).
+    st.session_state["last_comparison"] = {
+        "row_a": row_a.to_dict(),
+        "row_b": row_b.to_dict(),
+        "category_label": category,
+        "category_key": category_key,
+        "user_choice": active_choice,
+        "was_anonymous": bool(anonymous),
+    }
 
     # Rotate: winner stays; loser cycles to a new random challenger.
     if active_choice == "a":
@@ -343,33 +387,51 @@ if active_choice is not None:
     _sync_override_widgets_to_current()
     st.rerun()
 
-# --- Model reveal panel (shown for the CURRENT pair, always visible) -------
+# --- Model reveal panel (only after a pick; shows the LAST comparison) ------
 
-st.markdown("---")
-st.subheader("Model comparison for the current pair")
-reveal_cols = st.columns(3)
-name_a_show = f"Player A" if anonymous else (row_a.get("player", "A"))
-name_b_show = f"Player B" if anonymous else (row_b.get("player", "B"))
-
-for i, (label, col) in enumerate([
-    ("2026 value (fair_value_2026)", "fair_value_2026"),
-    ("Dynasty value (fair_value_dynasty)", "fair_value_dynasty"),
-    ("Real-life NFL (on_field_value)", "on_field_value"),
-]):
-    with reveal_cols[i]:
-        m_choice, gap = _model_pick(row_a, row_b, col)
-        winner = name_a_show if m_choice == "a" else (name_b_show if m_choice == "b" else "Tie")
-        val_a = fmt_float_or_dash(row_a.get(col), n=1)
-        val_b = fmt_float_or_dash(row_b.get(col), n=1)
-        active = (col == CATEGORY_TO_COL[category])
-        badge = " ⭐" if active else ""
-        st.metric(
-            f"{label}{badge}",
-            f"{winner}",
-            delta=f"+{gap:.1f}" if m_choice != "tie" else "even",
-            delta_color="off",
-            help=f"A: {val_a}  ·  B: {val_b}",
-        )
+last = st.session_state.get("last_comparison")
+if last is not None:
+    st.markdown("---")
+    prev_a = pd.Series(last["row_a"])
+    prev_b = pd.Series(last["row_b"])
+    name_a = str(prev_a.get("player", "A"))
+    name_b = str(prev_b.get("player", "B"))
+    st.subheader(f"Last comparison -- {name_a} vs {name_b}")
+    user_choice_label = {"a": name_a, "b": name_b, "skip": "Skip / even"}[last["user_choice"]]
+    st.caption(
+        f"Category picked: **{last['category_label']}**  ·  "
+        f"You said: **{user_choice_label}**"
+        + ("  ·  _(anonymous mode was on)_" if last.get("was_anonymous") else "")
+    )
+    reveal_cols = st.columns(3)
+    for i, (label, col) in enumerate([
+        ("2026 value (fair_value_2026)", "fair_value_2026"),
+        ("Dynasty value (fair_value_dynasty)", "fair_value_dynasty"),
+        ("Real-life NFL (on_field_value)", "on_field_value"),
+    ]):
+        with reveal_cols[i]:
+            m_choice, gap = _model_pick(prev_a, prev_b, col)
+            winner = name_a if m_choice == "a" else (name_b if m_choice == "b" else "Tie")
+            val_a = fmt_float_or_dash(prev_a.get(col), n=1)
+            val_b = fmt_float_or_dash(prev_b.get(col), n=1)
+            active = (col == CATEGORY_TO_COL[last["category_label"]])
+            # Agreement badge only for the active category (user only picked in one lens)
+            badge = ""
+            if active and last["user_choice"] in ("a", "b"):
+                agrees = (m_choice == last["user_choice"])
+                if m_choice != "tie":
+                    badge = " ✓" if agrees else " ✗"
+                else:
+                    badge = " (tie)"
+            elif active:
+                badge = " (skipped)"
+            st.metric(
+                f"{label}{badge}",
+                f"{winner}",
+                delta=f"+{gap:.1f}" if m_choice != "tie" else "even",
+                delta_color="off",
+                help=f"{name_a}: {val_a}  ·  {name_b}: {val_b}",
+            )
 
 # --- Sidebar: session stats -------------------------------------------------
 

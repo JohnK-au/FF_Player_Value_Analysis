@@ -155,6 +155,41 @@ def fa_pool(master: pd.DataFrame) -> pd.DataFrame:
     return master[master["roster_status"] == "fa"].copy()
 
 
+# --- Recent-season stats (for the Compare page, non-model view) --------------
+
+_STAT_COLS = [
+    "games", "ppg", "points", "target_share", "wopr", "snap_pct",
+    "carries", "rushing_epa",
+]
+
+
+@st.cache_data(show_spinner="Loading recent-season stats...")
+def load_season_stats() -> pd.DataFrame:
+    """Return a wide DataFrame indexed by espn_id with columns
+    `<stat>_2024` and `<stat>_2025` for a fixed set of headline metrics.
+
+    Source: data/processed/training_frame_extended.csv.
+    """
+    from src.config import PROCESSED_DIR
+    tf = pd.read_csv(PROCESSED_DIR / "training_frame_extended.csv")
+
+    def _wide(season: int) -> pd.DataFrame:
+        keep = ["espn_id"] + [c for c in _STAT_COLS if c in tf.columns]
+        sub = (
+            tf[tf["season"] == season][keep]
+            .dropna(subset=["espn_id"])
+            .drop_duplicates("espn_id")
+            .copy()
+        )
+        sub["espn_id"] = pd.to_numeric(sub["espn_id"], errors="coerce").astype("Int64")
+        return sub.rename(columns={c: f"{c}_{season}" for c in _STAT_COLS if c in sub.columns})
+
+    a = _wide(2024)
+    b = _wide(2025)
+    merged = a.merge(b, on="espn_id", how="outer")
+    return merged
+
+
 # --- Team logos + player headshots (for the Compare page) --------------------
 
 def team_logo_url(team_abbr: str | None) -> str | None:
