@@ -89,13 +89,37 @@ pos_filter = c3.multiselect(
 )
 shuffle_clicked = c4.button("Shuffle both", use_container_width=True)
 
+# Name <-> espn_id lookup (needed before state transitions)
+all_names = sorted(master["player"].dropna().unique().tolist())
+name_to_id = master.dropna(subset=["player", "espn_id"]).set_index("player")["espn_id"].astype(int).to_dict()
+id_to_name = {v: k for k, v in name_to_id.items()}
+
+
+def _sync_override_widgets_to_current() -> None:
+    """Push current_a / current_b names into the override_a/b selectbox state so
+    the widgets show the new selection instead of the stale user-picked one."""
+    a_name = id_to_name.get(int(st.session_state.current_a))
+    b_name = id_to_name.get(int(st.session_state.current_b))
+    if a_name:
+        st.session_state["override_a"] = a_name
+    if b_name:
+        st.session_state["override_b"] = b_name
+
+
 # Initialize / re-shuffle the pair -------------------------------------------
 pool = _filtered_pool(pos_filter)
 
-if "current_a" not in st.session_state or "current_b" not in st.session_state or shuffle_clicked:
+if "current_a" not in st.session_state or "current_b" not in st.session_state:
     pair = _random_pair(pool)
     if pair:
         st.session_state.current_a, st.session_state.current_b = pair
+        _sync_override_widgets_to_current()
+
+if shuffle_clicked:
+    pair = _random_pair(pool)
+    if pair:
+        st.session_state.current_a, st.session_state.current_b = pair
+        _sync_override_widgets_to_current()
 
 # Guard for empty pool
 if "current_a" not in st.session_state:
@@ -118,22 +142,31 @@ if row_a is None or row_b is None:
     st.error("Could not resolve one of the current players. Try Shuffle.")
     st.stop()
 
-# --- Manual override dropdowns ---------------------------------------------
+# --- Manual override dropdowns (on_change updates current_a / current_b) ---
+
+def _on_override_a_changed() -> None:
+    new_name = st.session_state.get("override_a")
+    new_id = name_to_id.get(new_name)
+    if new_id is not None:
+        st.session_state.current_a = int(new_id)
+
+
+def _on_override_b_changed() -> None:
+    new_name = st.session_state.get("override_b")
+    new_id = name_to_id.get(new_name)
+    if new_id is not None:
+        st.session_state.current_b = int(new_id)
+
 
 sel1, sel2 = st.columns(2)
-all_names = sorted(master["player"].dropna().unique().tolist())
-name_to_id = master.dropna(subset=["player", "espn_id"]).set_index("player")["espn_id"].astype(int).to_dict()
-id_to_name = {v: k for k, v in name_to_id.items()}
-cur_name_a = id_to_name.get(int(st.session_state.current_a), all_names[0])
-cur_name_b = id_to_name.get(int(st.session_state.current_b), all_names[1])
-override_a = sel1.selectbox("Override Player A", all_names, index=all_names.index(cur_name_a), key="override_a")
-override_b = sel2.selectbox("Override Player B", all_names, index=all_names.index(cur_name_b), key="override_b")
-if name_to_id.get(override_a) != int(st.session_state.current_a):
-    st.session_state.current_a = int(name_to_id[override_a])
-    st.rerun()
-if name_to_id.get(override_b) != int(st.session_state.current_b):
-    st.session_state.current_b = int(name_to_id[override_b])
-    st.rerun()
+# Seed session_state override_a/b if they're not present yet (first render)
+if "override_a" not in st.session_state:
+    st.session_state["override_a"] = id_to_name.get(int(st.session_state.current_a), all_names[0])
+if "override_b" not in st.session_state:
+    st.session_state["override_b"] = id_to_name.get(int(st.session_state.current_b), all_names[1])
+
+sel1.selectbox("Override Player A", all_names, key="override_a", on_change=_on_override_a_changed)
+sel2.selectbox("Override Player B", all_names, key="override_b", on_change=_on_override_b_changed)
 
 # --- Side-by-side panels ---------------------------------------------------
 
@@ -291,7 +324,6 @@ if active_choice is not None:
         )
 
     # Rotate: winner stays; loser cycles to a new random challenger.
-    other_id = st.session_state.current_b if active_choice == "a" else st.session_state.current_a
     if active_choice == "a":
         new_b = _random_challenger(pool, exclude={int(st.session_state.current_a)})
         if new_b:
@@ -307,6 +339,8 @@ if active_choice is not None:
         if new_pair:
             st.session_state.current_a, st.session_state.current_b = new_pair
 
+    # Sync selectbox widgets so the new pair actually shows.
+    _sync_override_widgets_to_current()
     st.rerun()
 
 # --- Model reveal panel (shown for the CURRENT pair, always visible) -------
