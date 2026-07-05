@@ -31,9 +31,10 @@ import streamlit as st  # noqa: E402
 
 from _lib import (  # noqa: E402
     COMPONENT_COLS, POS_ORDER,
-    fmt_float_or_dash, fmt_int_or_dash, latest_valuation, load_comparisons,
-    load_comments, load_master, load_season_stats, player_headshot_url,
-    save_comment, save_comparison, save_valuation, team_logo_url,
+    fmt_float_or_dash, fmt_int_or_dash, latest_valuation, load_boxscore_stats,
+    load_comparisons, load_comments, load_master, load_season_stats,
+    player_headshot_url, save_comment, save_comparison, save_valuation,
+    team_logo_url,
 )
 
 st.set_page_config(page_title="Compare (V2)", layout="wide")
@@ -45,12 +46,19 @@ _stats_lookup = {
     int(r["espn_id"]): r.to_dict()
     for _, r in _stats_df.dropna(subset=["espn_id"]).iterrows()
 }
+_box_lookup = load_boxscore_stats(2024)  # last complete season's counting stats
 
 
 def _stats_for(espn_id) -> dict:
     if pd.isna(espn_id):
         return {}
     return _stats_lookup.get(int(espn_id), {})
+
+
+def _box_for(espn_id) -> dict:
+    if pd.isna(espn_id):
+        return {}
+    return _box_lookup.get(int(espn_id), {})
 
 # --- Session state init -----------------------------------------------------
 
@@ -246,7 +254,7 @@ def _render_side(row: pd.Series, label: str, side_key: str) -> str | None:
         s3.metric("Total FP", fmt_int_or_dash(fpts_25))
         s4.metric("Snap %", f"{float(snap_25) * 100:.0f}%" if pd.notna(snap_25) else "-")
 
-        # Position-adaptive detail line
+        # Position-adaptive rate line
         if pos in ("WR", "TE"):
             ts = stats.get("target_share_2025")
             wopr = stats.get("wopr_2025")
@@ -258,15 +266,55 @@ def _render_side(row: pd.Series, label: str, side_key: str) -> str | None:
             if bits:
                 st.caption("  ·  ".join(bits))
         elif pos == "RB":
-            carries = stats.get("carries_2025")
             rush_epa = stats.get("rushing_epa_2025")
-            bits = []
-            if pd.notna(carries):
-                bits.append(f"Carries: **{int(float(carries))}**")
             if pd.notna(rush_epa):
-                bits.append(f"Rushing EPA: **{float(rush_epa):.1f}**")
-            if bits:
-                st.caption("  ·  ".join(bits))
+                st.caption(f"Rushing EPA: **{float(rush_epa):.1f}**")
+
+        # --- 2024 box-score counting stats (last complete season) ------------
+        box = _box_for(row.get("espn_id"))
+        if box:
+            st.markdown("**2024 box-score (counting stats)**")
+            if pos == "QB":
+                # passing + rushing
+                b1, b2, b3, b4 = st.columns(4)
+                b1.metric("Pass yds", fmt_int_or_dash(box.get("passing_yards")))
+                b2.metric("Pass TDs", fmt_int_or_dash(box.get("passing_tds")))
+                b3.metric("INTs", fmt_int_or_dash(box.get("interceptions")))
+                cmp_ = box.get("completions")
+                att = box.get("attempts")
+                cmp_pct = (100.0 * float(cmp_) / float(att)) if (pd.notna(cmp_) and pd.notna(att) and float(att) > 0) else None
+                b4.metric("Comp %", f"{cmp_pct:.1f}%" if cmp_pct is not None else "-")
+                r1, r2, r3 = st.columns(3)
+                r1.metric("Rush yds", fmt_int_or_dash(box.get("rushing_yards")))
+                r2.metric("Rush TDs", fmt_int_or_dash(box.get("rushing_tds")))
+                r3.metric("Carries", fmt_int_or_dash(box.get("carries")))
+            elif pos == "RB":
+                b1, b2, b3, b4 = st.columns(4)
+                b1.metric("Carries", fmt_int_or_dash(box.get("carries")))
+                b2.metric("Rush yds", fmt_int_or_dash(box.get("rushing_yards")))
+                b3.metric("Rush TDs", fmt_int_or_dash(box.get("rushing_tds")))
+                carries = box.get("carries")
+                rush_y = box.get("rushing_yards")
+                ypc = (float(rush_y) / float(carries)) if (pd.notna(rush_y) and pd.notna(carries) and float(carries) > 0) else None
+                b4.metric("YPC", f"{ypc:.2f}" if ypc is not None else "-")
+                r1, r2, r3 = st.columns(3)
+                r1.metric("Receptions", fmt_int_or_dash(box.get("receptions")))
+                r2.metric("Rec yds", fmt_int_or_dash(box.get("receiving_yards")))
+                r3.metric("Rec TDs", fmt_int_or_dash(box.get("receiving_tds")))
+            else:  # WR / TE / others
+                b1, b2, b3, b4 = st.columns(4)
+                b1.metric("Receptions", fmt_int_or_dash(box.get("receptions")))
+                b2.metric("Targets", fmt_int_or_dash(box.get("targets")))
+                b3.metric("Rec yds", fmt_int_or_dash(box.get("receiving_yards")))
+                b4.metric("Rec TDs", fmt_int_or_dash(box.get("receiving_tds")))
+                # Rushing line for pass-catchers who also carry (WR jet sweeps, etc.)
+                car = box.get("carries")
+                if pd.notna(car) and float(car) >= 5:
+                    st.caption(
+                        f"Rushing: **{fmt_int_or_dash(car)}** carries · "
+                        f"**{fmt_int_or_dash(box.get('rushing_yards'))}** yds · "
+                        f"**{fmt_int_or_dash(box.get('rushing_tds'))}** TDs"
+                    )
 
         # --- User's 1-year valuation (optional, non-anonymous only) ---
         if not anonymous:

@@ -163,6 +163,28 @@ _STAT_COLS = [
 ]
 
 
+@st.cache_data(show_spinner="Loading 2024 box-score stats...")
+def load_boxscore_stats(season: int = 2024) -> dict[int, dict]:
+    """Return {espn_id: {stat: value}} for the given season's box-score data.
+
+    Source: data/processed/player_boxscore_stats_{season}.csv (built by
+    src.data.nflverse::player_boxscore_stats). Defaults to 2024 -- the
+    last complete season with published nflverse seasonal aggregations.
+    """
+    from src.config import PROCESSED_DIR
+    path = PROCESSED_DIR / f"player_boxscore_stats_{season}.csv"
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path)
+    df = df.dropna(subset=["espn_id"])
+    df["espn_id"] = pd.to_numeric(df["espn_id"], errors="coerce").astype("Int64")
+    out: dict[int, dict] = {}
+    for _, r in df.iterrows():
+        if pd.notna(r["espn_id"]):
+            out[int(r["espn_id"])] = r.drop("espn_id").to_dict()
+    return out
+
+
 @st.cache_data(show_spinner="Loading recent-season stats...")
 def load_season_stats() -> pd.DataFrame:
     """Return a wide DataFrame indexed by espn_id with columns
