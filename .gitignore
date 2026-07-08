@@ -34,6 +34,7 @@ data/raw/
 !data/research/user_comparisons.csv
 !data/research/player_comments.csv
 !data/research/user_valuations.csv
+!data/research/comparison_analysis.csv
 
 # Figures (contain league data — names, salaries)
 figures/
