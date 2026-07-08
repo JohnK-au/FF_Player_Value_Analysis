@@ -79,10 +79,40 @@ def _random_challenger(pool: pd.DataFrame, exclude: set[int]) -> int | None:
     return random.choice(ids)
 
 
-def _filtered_pool(pos_filter: list[str]) -> pd.DataFrame:
+POOL_OPTIONS = [
+    "All (rostered + FAs)",
+    "Rostered only",
+    "Rostered + top 50 FAs by OFV",
+]
+
+
+def _pool_espn_ids(pool_scope: str) -> set[int]:
+    """Compute the set of eligible espn_ids for the current pool scope.
+    Applied to the master AFTER the position filter; both filters intersect."""
+    skill = master[master["position_group"].isin(POS_ORDER)]
+    if pool_scope == "Rostered only":
+        base = skill[skill["roster_status"] != "fa"]
+    elif pool_scope == "Rostered + top 50 FAs by OFV":
+        rostered = skill[skill["roster_status"] != "fa"]
+        fas = skill[skill["roster_status"] == "fa"]
+        top_fas = fas.nlargest(50, "on_field_value")
+        base = pd.concat([rostered, top_fas], ignore_index=True)
+    else:  # "All (rostered + FAs)"
+        base = skill
+    return set(base["espn_id"].dropna().astype(int).tolist())
+
+
+def _filtered_pool(pos_filter: list[str], pool_scope: str) -> pd.DataFrame:
+    eligible_ids = _pool_espn_ids(pool_scope)
     if not pos_filter:
-        return master[master["position_group"].isin(POS_ORDER)]
-    return master[master["position_group"].isin(pos_filter)]
+        return master[
+            master["position_group"].isin(POS_ORDER)
+            & master["espn_id"].astype("Int64").isin(eligible_ids)
+        ]
+    return master[
+        master["position_group"].isin(pos_filter)
+        & master["espn_id"].astype("Int64").isin(eligible_ids)
+    ]
 
 
 # --- Top controls -----------------------------------------------------------
@@ -108,6 +138,17 @@ pos_filter = c3.multiselect(
 )
 shuffle_clicked = c4.button("Shuffle both", use_container_width=True)
 
+# Second control row for pool scope + pool-size caption
+p1, p2 = st.columns([2.0, 3.0])
+pool_scope = p1.radio(
+    "Player pool",
+    options=POOL_OPTIONS,
+    index=0,
+    horizontal=True,
+    help="Constrains BOTH slots. 'Rostered only' skips the FA universe entirely. "
+         "'Rostered + top 50 FAs' surfaces the best FAs for realistic comparisons.",
+)
+
 # Name <-> espn_id lookup (needed before state transitions)
 all_names = sorted(master["player"].dropna().unique().tolist())
 name_to_id = master.dropna(subset=["player", "espn_id"]).set_index("player")["espn_id"].astype(int).to_dict()
@@ -131,7 +172,8 @@ def _sync_override_widgets_to_current() -> None:
 
 
 # Initialize / re-shuffle the pair -------------------------------------------
-pool = _filtered_pool(pos_filter)
+pool = _filtered_pool(pos_filter, pool_scope)
+p2.caption(f"Pool size: **{len(pool)}** players match the current filters.")
 
 if "current_a" not in st.session_state or "current_b" not in st.session_state:
     pair = _random_pair(pool)
