@@ -29,6 +29,11 @@ data/raw/
 *.xlsx
 *.parquet
 
+# Allowlist: static research snapshot (public NFL stats + our scoring totals; no
+# salaries/IDs/secrets). Committed so the PyTorch work is reproducible on any
+# device without ESPN creds — see docs/research/wr_weekly_torch.md §6.
+!data/processed/research/wr_weekly_features.csv
+
 # Figures (contain league data — names, salaries)
 figures/
 *.png

@@ -70,6 +70,7 @@ believed to be inefficient. The market-fit model is retained as a secondary
 - **Language:** Python 3 (local `.venv`).
 - **Data:** `pandas`, `pyarrow`, `nfl_data_py`, `espn-api`, `python-dotenv`, `openpyxl`.
 - **Modeling:** `scikit-learn` (`HistGradientBoostingRegressor`, `DecisionTreeRegressor`).
+- **Deep learning (research):** `torch` — WR weekly sequence models (`src/research/wr_torch/`).
 - **Viz:** `matplotlib`, `plotly`.
 - **App:** `streamlit` (open-source, runs locally; league data stays on your machine).
 
@@ -102,7 +103,8 @@ believed to be inefficient. The market-fit model is retained as a secondary
 │   │   ├── Home.py                     # Over/under-valued board
 │   │   └── pages/                      # Player Card · Market/Driver · Roster · Auction · Trade
 │   └── research/                       # Exploratory work-in-progress
-│       └── wr_weekly.py + wr_weekly_model.py  # WR weekly archetype discovery
+│       ├── wr_weekly.py + wr_weekly_model.py  # WR weekly archetype discovery + HistGBR baseline
+│       └── wr_torch/                   # PyTorch sequence models (LSTM/Transformer) — learning project
 ├── docs/
 │   ├── architecture.md
 │   ├── data_sources.md
@@ -176,6 +178,8 @@ expire periodically — refresh from a logged-in browser when calls return 401).
 - [ ] Roster optimization (Phase E) — integer-cap-constrained keep/cut/tag/extend/trade recommender
 - [ ] Active research: WR week-level archetype discovery → extend to RB/TE/QB
       ([`docs/research/wr_weekly_archetypes.md`](docs/research/wr_weekly_archetypes.md))
+- [ ] PyTorch sequence models (LSTM → Transformer) benchmarked vs the GBM baseline —
+      learning project ([`docs/research/wr_weekly_torch.md`](docs/research/wr_weekly_torch.md))
 - [ ] Reconstruct weekly skill scoring NFL-wide from nflverse so FAs get a real consistency factor
 - [ ] Extend historical data beyond 2022–25 to stabilize age curves and projection
 
@@ -188,6 +192,7 @@ expire periodically — refresh from a logged-in browser when calls return 401).
 - [`docs/rules.md`](docs/rules.md) — league cap rules
 - [`docs/figures.md`](docs/figures.md) — figure catalog
 - [`docs/research/`](docs/research/) — findings from exploratory work
+- [`docs/research/wr_weekly_torch.md`](docs/research/wr_weekly_torch.md) — PyTorch sequence-model plan, learning curriculum, cross-device onboarding
 - [`CLAUDE.md`](CLAUDE.md) — working notes for fast session resume
 
 ## Data Sources
