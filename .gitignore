@@ -29,6 +29,13 @@ data/raw/
 *.xlsx
 *.parquet
 
+# Allowlist: subjective-override files are user-edited and must persist across sessions
+!data/research/intangibles_overrides.csv
+!data/research/user_comparisons.csv
+!data/research/player_comments.csv
+!data/research/user_valuations.csv
+!data/research/comparison_analysis.csv
+
 # Allowlist: static research snapshot (public NFL stats + our scoring totals; no
 # salaries/IDs/secrets). Committed so the PyTorch work is reproducible on any
 # device without ESPN creds — see docs/research/wr_weekly_torch.md §6.
@@ -42,3 +49,5 @@ figures/
 .DS_Store
 .idea/
 .vscode/
+streamlit_log.txt
+streamlit_err.txt

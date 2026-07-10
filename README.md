@@ -1,122 +1,132 @@
 # FF Player Value Analysis
 
-Machine-learning analysis of player performance and contract value for an 8-team
-dynasty fantasy football league that uses an offline, NFL-style salary cap and
-multi-year contract system.
+Machine learning analysis of player performance and contract value for an
+8-team dynasty fantasy football league that uses an offline, NFL-style
+salary cap and contract system.
 
-> **Status:** Engine + interactive app are built and operational. A 2026 player
-> value table (current-season + dynasty) is produced from the production-anchored
-> fair-value model and a next-season PPG projection, surfaced through a local
-> Streamlit dashboard. Active research direction: week-level archetype discovery
-> for per-position projection refinement.
+> **Status:** V2 shipped. The **six-component quality framework** (Production,
+> Team, On-Field Value, Age, Injury, Position, Intangibles → Dynasty Value) is
+> live for all four skill positions across 490 priced players. On top of it, a
+> **cap-unit pricing engine** translates quality scores into fair contract
+> values via a 4-stage pipeline (per-position replacement baseline → non-linear
+> elite premium → age-adjusted multi-year decay). Powers an interactive
+> Streamlit app with 5 pages. The prior V1 engine (production-anchored VOR +
+> market-fit lens) is archived on the `main` branch history; V2 is now the
+> only live engine.
 
-## What this gives you
+## Purpose
 
-For every player in the 8-team league (and every NFL skill free agent):
+This project combines two data sources that are normally kept separate in
+fantasy football:
 
-- **Production-anchored fair value** for 2026 (`value_2026`) and a discounted
-  **multi-year dynasty value** (`dynasty_value`) — both with `surplus` columns
-  flagging bargains / overpays.
-- **Down/up/par diagnostic** for each player's most recent season via a
-  longitudinal context layer that compares them to their own history (no leakage).
-- **Next-season PPG projection** (`projected_ppg`) trained on 2,659 NFL skill
-  player-seasons with positional age curves for the multi-year extension.
-- An **interactive Streamlit app** with 5 pages: an over/under-valued board, a
-  per-player value card (year-by-year projection chart, context, both lenses),
-  a market/driver explorer (relationship, ranking, what-if simulator, over-pay
-  map), a per-team roster view with drop/extend/tag/keep recommendations, an
-  auction bid-target list, and a two-sided trade evaluator.
+1. **On-field performance** — weekly and seasonal stats (ESPN + nflverse
+   pbp/NGS/PFR/snaps, all keyed on `espn_id`)
+2. **Contract economics** — the league's custom salary-cap and multi-year
+   contract system, parsed from a Google Sheet
+
+…and uses ML to answer questions a real NFL front office would ask:
+
+- Which players are **over- or under-valued** vs their salary and contract length?
+- What is a player's **projected performance** over their remaining deal?
+- How should **age curves, dead cap, tags, and IR** shape roster decisions?
+- Which trades, extensions, cuts, or tags **maximize roster value** under the cap?
 
 ## The League
 
-- **Format:** dynasty (rosters carry season to season), 8 teams.
-- **Source:** ESPN Fantasy Football, custom scoring.
-- **Cap:** 1500 cap units/team/season, fixed.
-- **Roster:** 14 starters + 14 bench (28 veteran contract slots: 5×1yr, 5×2yr,
-  7×3yr, 6×4yr, 5×5yr) + 4 IR + 1 offline practice squad.
+- **Format:** Dynasty (rosters carry over season to season). Active season: **2026**.
+- **Source:** ESPN Fantasy Football (private league; requires user auth cookies).
+- **Teams:** 8 (Nate, Seeb, Silv, Kerr, Will, Drew, Couc, Haft).
+- **Cap:** 1,500 units/team/season, fixed.
+- **Roster:** 14 starters + 14 bench (= 28 veteran contract slots) + 4 IR + 1 offline practice squad.
 
-Full rules are documented in [`docs/rules.md`](docs/rules.md).
+The cap rules (rookie scale + 4th-year option, franchise tag, extensions,
+cuts/dead-cap, amnesty, IR) are documented and largely confirmed in
+[`docs/rules.md`](docs/rules.md).
 
-## How the engine works (one screen)
+## What's working today
 
-```
-contracts (Google Sheet)  +  ESPN performance  +  nflverse (pbp/NGS/PFR/snaps)
-        ↓
-src/data/population.py   →  training_frame.csv (2,659 skill player-seasons, 2022-25)
-        ↓
-src/data/context.py      →  per-player baseline / delta / z + year_type (down/up/par)
-        ↓
-src/models/projection.py →  next-season PPG (OOF R² 0.48) + positional age curves
-        ↓
-src/models/value.py
-   • multiplicative consistency factor (volatility penalty, bounded [0.5, 1])
-   • deep-baseline pricing (0.5 × starter replacement, NOT a $1 floor)
-   • redistribute cap pool over deep_vor → value_2026
-   • multi-year + age curve + 10%/yr discount → dynasty_value
-        ↓
-data/processed/player_value_2026.csv (master table the app reads)
-        ↓
-streamlit run src/app/Home.py
-```
+### Data foundation
+- ✅ Google Sheet contract ingestion (active rosters + extensions + cap sections,
+  reconciled against the sheet's CAP USED)
+- ✅ ESPN league pull (8 teams; season + weekly wk 1–13 fantasy points)
+- ✅ nflverse integration (ages, draft capital, combine, advanced metrics:
+  EPA / NGS / PFR / snaps, windowed to wk 1–13)
+- ✅ Contract ↔ ESPN crosswalk (100% matched, 242 players)
+- ✅ Unified 2026 player dataset + NFL-wide training frame
+  (2016–2025, ~5,600 player-seasons, fantasy scoring reconstructed from nflverse)
 
-**Key design decision:** fair value is anchored to objective production (VOR /
-replacement-level) rather than fit to actual salaries. Fitting actual salaries
-makes the model unable to flag *systematic* mispricing — and the league is
-believed to be inefficient. The market-fit model is retained as a secondary
-"market price" lens, and the gap between the two is the signal.
+### V2 six-component quality framework ([`docs/methodology/`](docs/methodology/))
+- ✅ **Production** (per-position predicted PPG → [0, 100], recency-weighted)
+- ✅ **Team** (per-position empirical residual regression → multiplier in [0.875, 1.125])
+- ✅ **On-Field Value** = Production × Team multiplier
+- ✅ **Age** (logistic decay sigmoid per position)
+- ✅ **Injury** (durability score from games played + IR designation)
+- ✅ **Position** (cross-position importance via VORP-Deep Total Impact in absolute PPG —
+  see [Phase 4.5 v2](docs/methodology/position.md))
+- 🟡 **Intangibles** (stub at neutral 50; reserved for trade-target / pedigree signal)
+- ✅ **Dynasty Value** combine = OFV 0.55 + Age 0.20 + Injury 0.15 + Position 0.05 + Intangibles 0.05
+- Output: `data/processed/player_value_v2_2026.csv` (490 priced players: 155 rostered + 335 dynasty-league FAs)
+
+### Cap-unit pricing engine ([`docs/methodology/pricing.md`](docs/methodology/pricing.md))
+- ✅ **4-stage pipeline** on top of Dynasty Value:
+  1. Per-position replacement baseline (user-picked: QB=41, RB=29, WR=34, TE=31)
+  2. `above_baseline_dv = max(0, dynasty_value - baseline)` (mid-tier collapse)
+  3. `scarcity_value = above_baseline_dv ^ α` (α=1.25 non-linear elite premium)
+  4. `rate = pool / sum(scarcity)` × per-year age multiplier × multi-year age decay
+- ✅ Empirical pool with `pool_scale=1.45` (model implies league underspends skill ~30%)
+- ✅ Sign convention: `surplus = salary − fair` (positive = overpaid, red)
+- Output: `data/processed/player_pricing_2026.csv` (joins to V2 master on `espn_id`)
+
+### Interactive Streamlit app (V2, `src/app/`)
+- ✅ **Home** — over/under board across 490 players; filters on pos/team/status/name; horizon toggle (2026 or dynasty)
+- ✅ **Player Card** — 6-component quality bars with league / top-3 / replacement reference overlays; pricing decomposition (DV → above baseline → scarcity → age); multi-year projection with age decay; peer top-10 at position
+- ✅ **Roster** — team cap summary; per-position breakdown (count / avg DV / startable count / net surplus); DROP/TAG/EXTEND/KEEP recommendations
+- ✅ **Trade Evaluator** — two-sided player swap with per-side totals + net delta strip (salary / DV / OFV / fair / surplus) + plain-English verdict
+- ✅ **Auction Bidder** — FA pool filtered/sorted by fair max-bid; per-position tabs; roster-fit sidebar with cap-space budgeting
+
+Run with `streamlit run src/app/Home.py`.
 
 ## Tech Stack
 
-- **Language:** Python 3 (local `.venv`).
-- **Data:** `pandas`, `pyarrow`, `nfl_data_py`, `espn-api`, `python-dotenv`, `openpyxl`.
-- **Modeling:** `scikit-learn` (`HistGradientBoostingRegressor`, `DecisionTreeRegressor`).
-- **Deep learning (research):** `torch` — WR weekly sequence models (`src/research/wr_torch/`).
-- **Viz:** `matplotlib`, `plotly`.
-- **App:** `streamlit` (open-source, runs locally; league data stays on your machine).
+- **Language:** Python 3 (uses a local `.venv`)
+- **Core libs:** `pandas`, `numpy`, `scikit-learn` (HistGBR), `nfl_data_py`, `espn-api`
+- **Deep learning (research):** `torch` — WR weekly sequence models (`src/research/wr_torch/`)
+- **App:** `streamlit`, `plotly`
+- **Viz:** `matplotlib`, `plotly`
+
+## Documentation map
+
+| Doc | Purpose |
+| --- | --- |
+| [`CLAUDE.md`](CLAUDE.md) | Living dev state — what's working, what's next, design decisions, gotchas |
+| [`docs/architecture.md`](docs/architecture.md) | Code layering: where features land |
+| [`docs/data_sources.md`](docs/data_sources.md) | How each data source is scraped/pulled |
+| [`docs/data_dictionary.md`](docs/data_dictionary.md) | Asset/grain/scope + stat glossary |
+| [`docs/rules.md`](docs/rules.md) | League cap/contract rules (✅/🟡/❓ tagged) |
+| [`docs/methodology/`](docs/methodology/) | V2 framework — per-component spec (production, team, age, injury, position, combination) |
+| [`docs/figures.md`](docs/figures.md) | Figure catalog (under `figures/{contracts,cap,value}/`) |
+| [`docs/analysis_plan.md`](docs/analysis_plan.md) | Historical roadmap (predates V2 framework; see CLAUDE.md for current state) |
+| [`docs/research/wr_weekly_torch.md`](docs/research/wr_weekly_torch.md) | PyTorch sequence-model plan, learning curriculum, cross-device onboarding (branch-only) |
 
 ## Project Structure
 
 ```
 .
-├── data/
-│   ├── raw/                            # Cached sheet/API pulls (git-ignored)
-│   └── processed/                      # Tidy + derived tables (git-ignored)
-│       ├── training_frame_context.parquet      # Modeling base
-│       ├── projected_production_2026.csv       # NFL-wide projected PPG
-│       ├── player_value_2026.csv               # Master value table the app reads
-│       └── research/                           # Exploration outputs
+├── data/                          # raw + processed data (git-ignored)
+├── docs/                          # rules, architecture, methodology, data dictionary
+├── figures/                       # rendered figures (git-ignored)
 ├── src/
-│   ├── config.py
-│   ├── data/                           # Ingestion + feature assembly
-│   │   ├── sheets.py / espn.py
-│   │   ├── contracts.py / cap.py
-│   │   ├── players.py / nflverse.py
-│   │   ├── performance.py / advanced.py
-│   │   ├── dataset.py / population.py
-│   │   └── context.py                  # Per-player longitudinal context (S2)
+│   ├── config.py                  # paths + league constants
+│   ├── data/                      # ingestion + parsing (sheets, ESPN, nflverse, cap, contracts, dataset, context)
 │   ├── models/
-│   │   ├── production.py               # PPG model + VOR + replacement levels
-│   │   ├── projection.py               # Next-season PPG + age curves
-│   │   └── value.py                    # Production-anchored fair value + dynasty
-│   ├── viz/                            # Matplotlib + Plotly figures
-│   ├── app/                            # Streamlit app
-│   │   ├── Home.py                     # Over/under-valued board
-│   │   └── pages/                      # Player Card · Market/Driver · Roster · Auction · Trade
-│   └── research/                       # Exploratory work-in-progress
-│       ├── wr_weekly.py + wr_weekly_model.py  # WR weekly archetype discovery + HistGBR baseline
-│       └── wr_torch/                   # PyTorch sequence models (LSTM/Transformer) — learning project
-├── docs/
-│   ├── architecture.md
-│   ├── data_sources.md
-│   ├── data_dictionary.md              # Asset table + raw/derived stat glossary
-│   ├── analysis_plan.md                # The ML roadmap
-│   ├── rules.md                        # League cap rules
-│   ├── figures.md
-│   └── research/                       # Findings docs from exploratory work
-├── figures/                            # Generated figures (git-ignored)
+│   │   ├── components/            # V2 six-component framework (one module per component + combine + framework orchestrator)
+│   │   └── pricing.py             # 4-stage cap-unit pricing engine (layered on V2 quality scores)
+│   ├── viz/                       # figures + interactive HTMLs (workshop tools for weight/param tuning)
+│   ├── research/                  # exploratory (branch-only): WR weekly features + models; wr_torch/ = PyTorch sequence models
+│   └── app/                       # Streamlit app (Home + Player Card + Roster + Trade + Auction)
+├── .env.example                   # template for local config
 ├── requirements.txt
-├── .env.example                        # Template (real values in git-ignored .env)
-└── CLAUDE.md                           # Working notes for fast session resume
+└── README.md
 ```
 
 ## Getting Started
@@ -125,79 +135,66 @@ believed to be inefficient. The market-fit model is retained as a secondary
 git clone https://github.com/JohnK-au/FF_Player_Value_Analysis.git
 cd FF_Player_Value_Analysis
 
+# create + activate the venv (use the appropriate path for your OS)
 python -m venv .venv
-# Windows: .\.venv\Scripts\Activate.ps1   |  Unix: source .venv/bin/activate
+# macOS / Linux:
+source .venv/bin/activate
+# Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+
 pip install -r requirements.txt
-
-cp .env.example .env       # fill in CONTRACTS_SHEET_ID, ESPN_S2, ESPN_SWID, etc.
-```
-
-### Build the data + run the app
-
-```bash
-# Build the full engine (cached parquet downloads on first run; later runs are fast)
-python -m src.data.sheets         # cache the 3 relevant Google Sheet tabs
-python -m src.data.contracts      # parse active rosters + extensions
-python -m src.data.cap            # parse cap sections + reconcile CAP USED
-python -m src.data.players        # build contract <-> ESPN crosswalk
-python -m src.data.performance    # season + weekly (wk 1-13) fantasy points 2022-25
-python -m src.data.population     # build all-NFL-skill-players x season training frame
-python -m src.data.context        # per-player baseline/delta/z + year_type
-python -m src.models.production   # production PPG model + VOR + replacement
-python -m src.models.projection   # next-season projection + age curves
-python -m src.models.value        # produces data/processed/player_value_2026.csv
-
-# Launch the interactive app
-streamlit run src/app/Home.py
+cp .env.example .env   # then fill in real values
 ```
 
 ### Configuration
 
-League-specific identifiers (contract sheet ID, ESPN league/team ids, auth
-cookies) are **not stored in this repo**. They live in a local, git-ignored
-`.env` file (see `.env.example` for the template).
+League-specific identifiers — contract sheet ID, ESPN league/team IDs, ESPN
+auth cookies (`ESPN_S2`, `ESPN_SWID`) — live in a local `.env` (git-ignored).
+The contract sheet must be shared as **"Anyone with the link can view"** for
+the no-auth CSV export to work. ESPN cookies expire periodically; refresh
+from a logged-in browser when calls return HTTP 401.
 
-The contract sheet is read via Google's CSV-export endpoint, so it must be
-shared as **"Anyone with the link can view."** The ESPN league is private,
-which means the API requires your `ESPN_S2` and `ESPN_SWID` cookies (they
-expire periodically — refresh from a logged-in browser when calls return 401).
+### Common commands
 
-## Roadmap
+> On Windows, replace `.venv/bin/python` with `.venv\Scripts\python.exe`.
 
-- [x] Project scaffolding + GitHub setup
-- [x] Contract-sheet ingestion + parsing (active rosters + extensions)
-- [x] ESPN performance ingestion (season + weekly)
-- [x] Unified player dataset (performance + cost) + crosswalk
-- [x] Advanced metrics (pbp / NGS / PFR / snaps) + team/offense context
-- [x] Production model (OOF R² ≈ 0.81) + replacement levels / VOR
-- [x] Fair-value engine — two lenses (production-anchored + market-fit),
-      pricing-degeneracy fixed (deep baseline + multiplicative consistency)
-- [x] Per-player longitudinal context layer (S2) — `year_type` ∈ {up, par, down, rookie, partial}
-- [x] Next-season projection model + positional age curves (S3, S4)
-- [x] Streamlit app (board + value card + market/driver explorer + roster + auction + trade)
-- [ ] Roster optimization (Phase E) — integer-cap-constrained keep/cut/tag/extend/trade recommender
-- [ ] Active research: WR week-level archetype discovery → extend to RB/TE/QB
-      ([`docs/research/wr_weekly_archetypes.md`](docs/research/wr_weekly_archetypes.md))
-- [ ] PyTorch sequence models (LSTM → Transformer) benchmarked vs the GBM baseline —
-      learning project ([`docs/research/wr_weekly_torch.md`](docs/research/wr_weekly_torch.md))
-- [ ] Reconstruct weekly skill scoring NFL-wide from nflverse so FAs get a real consistency factor
-- [ ] Extend historical data beyond 2022–25 to stabilize age curves and projection
+```bash
+# Data pipeline
+.venv/bin/python -m src.data.sheets         # cache 3 relevant contract tabs
+.venv/bin/python -m src.data.contracts      # parse active + extensions
+.venv/bin/python -m src.data.cap            # parse + reconcile cap sections
+.venv/bin/python -m src.data.players        # contract <-> ESPN crosswalk
+.venv/bin/python -m src.data.performance    # season + weekly points 2022-2025
+.venv/bin/python -m src.data.dataset        # 2026 player dataset
+.venv/bin/python -m src.data.population     # all-NFL training frame
+.venv/bin/python -m src.data.context        # per-player baseline/delta/z + year_type
 
-## Documentation
+# V2 framework + pricing
+.venv/bin/python -m src.models.components.framework   # build V2 master CSV (490 players x 6 components)
+.venv/bin/python -m src.models.pricing                # build pricing CSV (fair values, surplus)
 
-- [`docs/architecture.md`](docs/architecture.md) — codebase layering and where features land
-- [`docs/data_sources.md`](docs/data_sources.md) — data-scraping reference
-- [`docs/data_dictionary.md`](docs/data_dictionary.md) — every data asset + raw/derived stat glossary
-- [`docs/analysis_plan.md`](docs/analysis_plan.md) — the ML roadmap with current state
-- [`docs/rules.md`](docs/rules.md) — league cap rules
-- [`docs/figures.md`](docs/figures.md) — figure catalog
-- [`docs/research/`](docs/research/) — findings from exploratory work
-- [`docs/research/wr_weekly_torch.md`](docs/research/wr_weekly_torch.md) — PyTorch sequence-model plan, learning curriculum, cross-device onboarding
-- [`CLAUDE.md`](CLAUDE.md) — working notes for fast session resume
+# Workshop tools (param/weight tuning)
+.venv/bin/python -m src.viz.position_components WR    # per-position component grid HTML
+.venv/bin/python -m src.viz.cross_position_variants   # Position component weight variants
+.venv/bin/python -m src.viz.combine_variants          # Dynasty Value combine variants
+.venv/bin/python -m src.viz.pricing_variants          # pricing pipeline preset variants
+
+# Figures
+.venv/bin/python -m src.viz.contracts   # per-team contract timelines
+.venv/bin/python -m src.viz.cap         # cap distribution + projection + salary-by-position
+
+# Streamlit app
+streamlit run src/app/Home.py
+```
 
 ## Data Sources
 
-- **ESPN league** — accessed via league/team/season identifiers + auth cookies in `.env`.
-- **Contract spreadsheet** — Google Sheet referenced by `CONTRACTS_SHEET_ID`; link kept out of this public repo.
-- **nflverse** — play-by-play, Next Gen Stats, PFR advanced stats, snap counts,
-  schedule/Vegas lines, seasonal rosters, draft, combine (all via `nfl_data_py`).
+- **ESPN league** — `espn-api`; private, auth-cookie-gated
+- **Contract spreadsheet** — Google Sheet CSV-export (`CONTRACTS_SHEET_ID`);
+  reads 3 tabs by name: `Master Cap Sheet`, `Trade Log`, `Contract Extensions`
+- **nflverse** — `nfl_data_py` for ages, draft capital, combine, play-by-play,
+  NGS, PFR, snap counts
+
+## License
+
+Personal project. Not licensed for redistribution.

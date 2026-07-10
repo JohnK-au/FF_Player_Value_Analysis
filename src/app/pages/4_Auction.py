@@ -1,13 +1,15 @@
-"""Auction Bid Targets — FA pool projected fair values (max-fair-bid per player).
+"""V2 Auction Bidder -- FA pool with recommended max bids.
 
-Free agents = NFL skill players not currently under league contract. For each FA we
-project 2026 PPG (S3 model), apply the same deep-baseline pricing recipe (with no
-volatility penalty since we lack weekly data for non-rostered players), and report
-the **max fair bid** — i.e., the cap-unit amount at which paying for them would equal
-their projected production-anchored value.
+The V2 master already includes dynasty-league FAs (roster_status='fa') --
+NFL skill players with 2025 games >= 4 not on any of the 8 rosters. Each has
+a computed fair_value_2026 via the same pricing pipeline as rostered players,
+which is the model's max-fair-bid signal.
 
-For the user's own cap context, show projected total skill-cap usage if currently
-on the user's team (useful for sizing bids against remaining headroom).
+Sections:
+  Filters (position, age band, min DV, name search)
+  Position tabs (All / QB / RB / WR / TE) with counts
+  Bid target table sorted by fair_value_2026 desc
+  Roster fit check: budget input, cross-reference vs your team's cap space
 """
 from __future__ import annotations
 
@@ -22,61 +24,107 @@ for p in (_THIS.parents[1], _THIS.parents[3]):
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from _lib import MY_TEAM, POS_ORDER, TEAMS, load_fa_pool, load_master  # noqa: E402
+from _lib import (  # noqa: E402
+    MY_TEAM, POS_ORDER, TEAMS,
+    fa_pool, load_master, style_surplus,
+)
 
-st.set_page_config(page_title="Auction Bid Targets", layout="wide")
-st.title("Auction Bid Targets")
+st.set_page_config(page_title="Auction Bidder (V2)", layout="wide")
+st.title("Auction Bidder -- FA pool max fair bids")
 st.markdown(
-    "Free agents (NFL skill players not under league contract) priced at their "
-    "projected production-anchored value. **`max_fair_bid`** is the cap-unit amount at "
-    "which paying for them equals their projected value — bid up to it for a neutral "
-    "deal; bid below for a bargain."
+    "Dynasty-league free agents (NFL skill players **not** on any of the 8 rosters). "
+    "`fair_value_2026` is the model's **max fair single-season bid** -- pay less "
+    "and it's a bargain."
 )
 
-fa, rate = load_fa_pool()
 master = load_master()
+pool = fa_pool(master)
 
-# --- Filters ---
-fc1, fc2, fc3 = st.columns([1, 1, 1.4])
-team = fc1.selectbox("Your team", TEAMS, index=TEAMS.index(MY_TEAM))
-positions = fc2.multiselect("Position", POS_ORDER, default=POS_ORDER)
-min_bid = fc3.slider("Minimum max_fair_bid", 0, int(fa["max_fair_bid"].max() or 1),
-                     value=10, help="Hide near-zero FA values to focus on real targets.")
-
-f = fa[fa["position_group"].isin(positions) & (fa["max_fair_bid"] >= min_bid)].copy()
-
-# --- Cap context for the selected team ---
-my_roster = master[master["team"] == team]
-my_skill_used = float(my_roster["salary_2026"].sum())
-CAP_TOTAL = 1500
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Your skill cap used", f"{my_skill_used:.0f}")
-m2.metric("FA pool size (filtered)", len(f))
-m3.metric("Top max_fair_bid", f"{f['max_fair_bid'].max():.0f}" if len(f) else "—")
-m4.metric("Cap rate", f"{rate:.1f}", help="Cap units per deep-VOR point (from value engine).")
-
-st.caption(
-    "Note: FA volatility (downside deviation) is unavailable for non-rostered players, "
-    "so the bid assumes consistency_factor = 1.0. For volatile profiles, discount the bid "
-    "in your head, or wait for in-season weekly data to refine."
+# --- Filters ---------------------------------------------------------------
+f1, f2, f3, f4 = st.columns([1.4, 1.4, 1.2, 1.6])
+positions = f1.multiselect("Position", POS_ORDER, default=POS_ORDER)
+age_min, age_max = f2.slider(
+    "Age range",
+    min_value=20, max_value=45,
+    value=(20, 40),
 )
+min_fair = f3.number_input("Min fair 2026", value=0, min_value=0, max_value=200, step=5,
+                            help="Hide FAs below this fair value (usually below-baseline).")
+search = f4.text_input("Player name contains", "")
 
-# --- Top targets by position ---
-st.subheader("Top targets by position")
-tabs = st.tabs(POS_ORDER)
-for tab, pos in zip(tabs, POS_ORDER):
-    with tab:
-        s = f[f["position_group"] == pos].head(25)
-        if len(s) == 0:
-            st.info(f"No {pos} free agents meeting the filter.")
-            continue
-        cols = ["name", "age", "ppg", "projected_ppg", "deep_vor", "max_fair_bid"]
-        cols = [c for c in cols if c in s.columns]
-        st.dataframe(
-            s[cols].rename(columns={
-                "name": "player", "ppg": "2025 PPG",
-                "projected_ppg": "projected 2026 PPG",
-                "deep_vor": "deep VOR", "max_fair_bid": "max fair bid",
-            }),
-            use_container_width=True, hide_index=True, height=min(600, 80 + 35 * len(s)),
-        )
+f = pool[
+    pool["position_group"].isin(positions)
+    & pool["age"].between(age_min, age_max)
+    & (pool["fair_value_2026"] >= min_fair)
+]
+if search.strip():
+    f = f[f["player"].str.contains(search.strip(), case=False, na=False)]
+
+# --- Roster-fit sidebar ---------------------------------------------------
+with st.sidebar:
+    st.subheader("Roster fit")
+    my_team = st.selectbox("My team", TEAMS, index=TEAMS.index(MY_TEAM))
+    my_roster = master[master["team"] == my_team]
+    my_salary = float(my_roster["salary_2026"].sum()) if len(my_roster) else 0.0
+    CAP_TOTAL = 1500
+    cap_space = CAP_TOTAL - my_salary
+    st.metric("Skill salary used", f"{my_salary:.0f}")
+    st.metric("Est. skill cap space", f"{cap_space:.0f}",
+              help="Roughly what you have left before non-skill (K/P/HC/etc) commitments.")
+
+    st.markdown("---")
+    st.markdown("**Cap-space guide** (rough thresholds):")
+    st.markdown(
+        f"- Elite bid ceiling: {cap_space:.0f}\n"
+        f"- 5-player mid-tier avg: {cap_space/5:.0f}/each\n"
+        f"- 10 depth flyers: {cap_space/10:.0f}/each"
+    )
+
+# --- Position tabs --------------------------------------------------------
+tabs = st.tabs(["All"] + [f"{p} ({int((f['position_group'] == p).sum())})" for p in POS_ORDER])
+
+show_cols = [
+    "player", "nfl_team_2025", "position_group", "age", "years_exp",
+    "dynasty_value", "on_field_value",
+    "replacement_dv", "above_baseline_dv",
+    "fair_value_2026",
+]
+
+
+def _render_table(df: pd.DataFrame, subtitle: str = ""):
+    if not len(df):
+        st.info("No FAs match the current filters.")
+        return
+    df = df.sort_values("fair_value_2026", ascending=False).head(200)
+    show = df[[c for c in show_cols if c in df.columns]].copy()
+    for c in ("age", "dynasty_value", "on_field_value", "replacement_dv", "above_baseline_dv"):
+        if c in show.columns:
+            show[c] = pd.to_numeric(show[c], errors="coerce").round(1)
+    for c in ("years_exp", "fair_value_2026"):
+        if c in show.columns:
+            show[c] = pd.to_numeric(show[c], errors="coerce").round(0)
+    st.dataframe(show, use_container_width=True, hide_index=True, height=min(720, 60 + 32 * len(show)))
+    if subtitle:
+        st.caption(subtitle)
+
+
+with tabs[0]:
+    st.subheader("All FAs (top 200 by fair 2026)")
+    _render_table(f, f"{len(f)} FAs match filters. Sorted by max fair bid desc.")
+
+for i, pos in enumerate(POS_ORDER, start=1):
+    with tabs[i]:
+        sub = f[f["position_group"] == pos]
+        st.subheader(f"{pos} FAs")
+        _render_table(sub, f"{len(sub)} {pos} FAs match filters.")
+
+# --- Bottom caption -------------------------------------------------------
+st.markdown("---")
+st.caption(
+    "**fair_value_2026** = max fair *single-season* bid from the V2 pricing pipeline "
+    "(dynasty_value scored via the 6-component framework, then baseline-collapsed, "
+    "non-linear-scaled, and age-adjusted). If you can sign the player for less than "
+    "the fair, that's negative surplus = a bargain. "
+    "Multi-year commitments should compare `fair_value_dynasty` (not shown -- FAs "
+    "have no years yet)."
+)

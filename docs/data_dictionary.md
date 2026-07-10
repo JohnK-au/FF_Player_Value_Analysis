@@ -25,7 +25,12 @@ Both are per-game. See the [PPG policy](#ppg-basis-policy).
 ### Advanced metrics — nflverse (pbp / NGS / PFR / snaps), windowed to wk 1–13
 | Asset | Grain | Coverage | Scope |
 | --- | --- | --- | --- |
-| `data/processed/advanced/advanced_{2022..2025}.parquet` | player × season | ~1,640–2,225 players/season · 19 metrics | **NFL-wide** |
+| `data/processed/advanced/advanced_{2016..2025}.parquet` | player × season | ~1,540–2,320 players/season · 23 metrics | **NFL-wide** |
+
+PFR advanced rate stats (`ybc_att`, `yac_att`, `pressure_pct`, `on_tgt_pct`)
+are unavailable pre-2018 — those columns are NaN for 2016-2017 seasons (handled
+natively by HistGBR). NGS receiving starts 2016 (full coverage); NGS rushing
++ NGS passing accuracy come online progressively in 2017-2018.
 
 ### Player attributes — nflverse (joined on `espn_id`)
 | Asset | Content | Scope |
@@ -46,9 +51,16 @@ Both are per-game. See the [PPG policy](#ppg-basis-policy).
 ### Combined / model tables
 | Asset | Content |
 | --- | --- |
-| `data/processed/training_frame.csv` | **2,659 skill player-seasons** (2022–25, 1,051 players) = production + 19 advanced + draft + combine + age — the modeling base |
+| `data/processed/training_frame.csv` | **2,659 skill player-seasons** (2022–25, 1,051 players) = production + 19 advanced + draft + combine + age — the legacy modeling base from the archived V1 engine. Retained for historical reference and as an alternative slice; V2 uses the extended frame below. |
+| `data/processed/training_frame_extended.csv` | **5,598 skill player-seasons** (2016–25) = same shape as above but on the v2 extended window. PPG basis: nflverse `seasonal_data` + our [2025 scoring rules](../src/data/scoring.py) for 2016-2024; ESPN-reported for 2025. Used by the v2 component framework. |
 | `data/processed/player_dataset_2026.csv` | 180 contract players: salary + age + 2024/25 production |
-| `data/processed/fair_value_2026.csv` | 155 priced players, both lenses (`prod_fair`/`surplus_prod`, `market_fair`/`surplus_market`, `vor`, `downside`) |
+| `data/processed/player_value_v2_2026.csv` | **490 priced players** (155 rostered + 335 dynasty-league FAs) × all 6 V2 component scores + `on_field_value` + `dynasty_value` + `contract_value`. Built by [`src/models/components/framework.py`](../src/models/components/framework.py); see [docs/methodology/](methodology/) for the per-component spec. |
+| `data/processed/player_pricing_2026.csv` | Same 490 players extended with cap-unit **pricing columns** derived from V2 quality scores via the 4-stage pricing pipeline: `replacement_dv`, `above_baseline_dv`, `scarcity_value`, `base_fair`, `age_mult`, **`fair_value_2026`**, **`surplus_2026`**, **`fair_value_dynasty`**, **`surplus_dynasty`**, plus provenance columns (`pricing_basis`, `pricing_pool`, `pricing_pool_scale`, `pricing_alpha`, `pricing_age_band_lo/hi`). Sign convention matches V1 app: positive surplus = overpaid. Built by [`src/models/pricing.py`](../src/models/pricing.py); see [docs/methodology/pricing.md](methodology/pricing.md) for the pipeline. |
+
+### Scoring reconstruction — for the extended training frame
+| Asset | Content |
+| --- | --- |
+| [`src/data/scoring.py`](../src/data/scoring.py) | Canonical 2025 league scoring rules (regression-derived from box scores; R² ≥ 0.993 across 1,849 player-weeks) + `compute_fantasy_points()` + `nflverse_season_production()`. Validated against 2024 ESPN-reported PPG (MAE 0.82 PPG; median 0.46). |
 
 ## Coverage constraints (read before modeling)
 1. **"NFL-wide" is not uniform.** Full-season PPG and advanced metrics are NFL-wide, but

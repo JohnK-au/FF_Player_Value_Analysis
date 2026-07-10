@@ -130,10 +130,20 @@ def _ngs(season: int, weeks: int) -> pd.DataFrame:
     )
 
 
+PFR_FIRST_SEASON = 2018  # nflverse: import_seasonal_pfr unavailable before 2018
+
+
 def _pfr(season: int) -> pd.DataFrame:
-    """PFR advanced rate stats (full season), keyed by pfr_id."""
+    """PFR advanced rate stats (full season), keyed by pfr_id.
+
+    Returns an empty frame (with the expected columns) for seasons before
+    ``PFR_FIRST_SEASON`` — those features stay NaN in the training frame,
+    which HistGBR handles natively.
+    """
     import nfl_data_py as nfl
 
+    if season < PFR_FIRST_SEASON:
+        return pd.DataFrame(columns=["pfr_id", "ybc_att", "yac_att", "pressure_pct", "on_tgt_pct"])
     rush = nfl.import_seasonal_pfr("rush", [season])[["pfr_id", "ybc_att", "yac_att"]]
     pas = nfl.import_seasonal_pfr("pass", [season])[["pfr_id", "pressure_pct", "on_tgt_pct"]]
     return rush.merge(pas, on="pfr_id", how="outer")
