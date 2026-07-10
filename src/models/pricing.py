@@ -228,8 +228,12 @@ def fair_value_dynasty(
 
     fair_value_2026    = base_fair * age_multiplier(current age)
     fair_value_dynasty = sum over years [1..years_2026] with projected_age = age + (y-1)
+
+    NaN age is NEUTRAL (multiplier 1.0 every year, matching `age_multiplier`), not
+    disqualifying — zeroing fair value on a missing age made the player read as
+    maximally overpaid while the emitted age_mult column still showed 1.0.
     """
-    if pd.isna(age) or pd.isna(base_fair) or base_fair <= 0:
+    if pd.isna(base_fair) or base_fair <= 0:
         return 0.0, 0.0
     yrs = int(max(1, round(float(years)))) if not pd.isna(years) else 1
     yr1_mult = age_multiplier(age, position, band)
@@ -276,7 +280,7 @@ def build_pricing(
     baseline_tier: str = "fa",
     baseline_offset: float = 0.0,
     baseline_override: dict[str, float] | None = None,
-    alpha: float = 1.7,
+    alpha: float = USER_ALPHA,
     age_band: tuple[float, float] = (0.85, 1.15),
     master_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:

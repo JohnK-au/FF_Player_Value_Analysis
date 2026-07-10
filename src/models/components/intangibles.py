@@ -20,12 +20,14 @@ overrides onto the players frame.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 
+from src.config import DATA_DIR
+
 NEUTRAL = 50.0
-OVERRIDES_PATH = Path("data/research/intangibles_overrides.csv")
+# Root-anchored via config: a relative path here silently loaded NOTHING (everyone
+# neutral 50) whenever the process wasn't launched from the repo root.
+OVERRIDES_PATH = DATA_DIR / "research" / "intangibles_overrides.csv"
 LO, HI = 0.0, 100.0
 
 
