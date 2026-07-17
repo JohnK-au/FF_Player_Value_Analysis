@@ -47,8 +47,10 @@ OUTPUT_COLS = (
     "on_field_value",   # Production x Team multiplier (Phase 1D); see combination.md
     "dynasty_value",
     "contract_value",
-    "dynasty_surplus",
-    "contract_surplus",
+    # NOTE: surplus intentionally NOT computed here. dynasty_value is a 0-100
+    # quality score; subtracting cap-unit salaries from it is dimensionally
+    # meaningless. Surplus lives in pricing.py (surplus = salary - fair,
+    # positive = overpaid), in cap units, per docs/methodology/pricing.md.
 )
 
 
@@ -198,13 +200,9 @@ def build_player_values_v2(
             scored["production_value"], scored["team_value"], scored["position_group"]
         )
         scored["dynasty_value"] = combine.combine(scored, method=combination_method)
-        # NaN-safe years / surplus calcs for FAs (no contract)
+        # NaN-safe years calc for FAs (no contract)
         years = pd.to_numeric(scored["years_2026"], errors="coerce").clip(lower=1)
         scored["contract_value"] = scored["dynasty_value"] / years
-        total_sal = pd.to_numeric(scored.get("dynasty_total_salary", 0), errors="coerce")
-        salary = pd.to_numeric(scored["salary_2026"], errors="coerce")
-        scored["dynasty_surplus"] = scored["dynasty_value"] - total_sal
-        scored["contract_surplus"] = scored["contract_value"] - salary
 
     out_cols = [c for c in OUTPUT_COLS if c in scored.columns]
     return scored[out_cols].sort_values("dynasty_value", ascending=False, na_position="last")

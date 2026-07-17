@@ -61,7 +61,11 @@ Master CSV written to `data/processed/player_value_v2_2026.csv`. Columns:
 - **Contract**: salary_2026, years_2026, dynasty_total_salary
 - **Component scores (0-100)**: production_value, age_value, team_value, injury_value, position_value, intangibles_value
 - **On-Field Value** (Phase 1D): on_field_value = production_value × team multiplier; the "what they deliver on the field given their environment" intermediate
-- **Final outputs**: dynasty_value, contract_value, dynasty_surplus, contract_surplus
+- **Final outputs**: dynasty_value, contract_value. (Surplus is deliberately *not*
+  in this table: dynasty_value is a 0-100 quality score, so score-minus-salary is
+  dimensionally meaningless. Surplus is owned by the pricing layer —
+  `surplus = salary − fair_value`, positive = overpaid, in cap units; see
+  [pricing.md](pricing.md).)
 
 The legacy [`player_value_2026.csv`](../../data/processed/player_value_2026.csv)
 is still produced by the old engine; the two coexist until v2 is validated

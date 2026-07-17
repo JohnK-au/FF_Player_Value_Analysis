@@ -15,13 +15,20 @@ Features cover:
 - **QB / team-passing context this week** (pbp by `posteam`): team pass EPA/play,
   team CPOE, completion %, pass rate, pass volume.
 - **Opponent defense** (pbp by `defteam`, **rolling**): weighted mean across prior
-  season-to-date weeks, weight 2.0 for the last 4 weeks vs 1.0 for earlier ones. No
-  look-ahead leakage.
+  season-to-date weeks, weight 2.0 for the last 4 weeks vs 1.0 for earlier ones. The
+  no-look-ahead guarantee applies to this feature family (and Vegas lines) only.
 - **Game environment** (`import_schedules`): is_home, team_spread (positive = favored),
   team_implied_total, opponent_implied_total, point total.
 - **Player-static**: age (per season), draft_value, undrafted, forty, vertical, broad_jump.
 
 Target = `points` from `performance_weekly.csv` (our league's scoring, rostered).
+
+LEAKAGE WARNING: most feature columns here (per-week usage, NGS, team-passing
+context, snap counts) are realized week-`w` OUTCOMES — contemporaneous with the
+week-`w` target, NOT pre-game information. Only the rolling opponent-defense,
+Vegas-line, and player-static families are safe to use predictively at week `w`
+as-is. Predictive modeling must drop or lag the rest — see LEAKY_COLS and the
+`shift(1).rolling` treatment in ``wr_weekly_model.py``.
 """
 from __future__ import annotations
 

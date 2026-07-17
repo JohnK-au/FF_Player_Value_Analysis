@@ -24,12 +24,12 @@ Shared paths & league constants live in [`src/config.py`](src/config.py).
 - Public repo: `JohnK-au/FF_Player_Value_Analysis`
 - Language: Python 3 (a local `.venv` is used for dependencies)
 
-## Current state — as of 2026-07-05
+## Current state — as of 2026-07-17
 
-**Active branch:** `streamlit-rebuild` (stacked on `value-v2`). V2 six-component
-framework + cap-unit pricing engine + Streamlit rebuild are all shipped and
-merged through this stack. **V1 engine deleted** — code lives in `main` history
-if it ever needs to be revived.
+**All shipped and merged to `main`** (through PR #17): the V2 six-component
+framework, the cap-unit pricing engine, and the Streamlit rebuild. **V1 engine
+deleted** in `c049e99` — code lives in git history if it ever needs reviving
+(see "V1 history" under [Next steps](#next-steps)).
 
 ### V2 six-component framework — Phase 4.5 v2 complete (commit `213c9db`)
 
@@ -81,7 +81,7 @@ Sign convention matches original app: positive surplus = overpaid (red).
 ### Streamlit rebuild — Phase 6 complete
 
 `src/app/` fully rebuilt on the V2+pricing stack. Loader (`_lib.py`) joins the
-V2 master and pricing CSVs into a single unified DataFrame; 4 pages:
+V2 master and pricing CSVs into a single unified DataFrame; Home + 5 pages:
 
 - **Home** ([`Home.py`](src/app/Home.py)) — over/under board with pos/team/status/name
   filters and horizon toggle (2026 vs dynasty).
@@ -96,6 +96,12 @@ V2 master and pricing CSVs into a single unified DataFrame; 4 pages:
 - **Auction Bidder** ([`pages/4_Auction.py`](src/app/pages/4_Auction.py)) — FA pool
   filtered by fair max-bid; per-position tabs; roster-fit sidebar with cap-space
   budget guide.
+- **Compare** ([`pages/5_Compare.py`](src/app/pages/5_Compare.py)) — "This or That"
+  head-to-head: pick the more valuable player across three lenses (2026 /
+  Dynasty / real-life NFL). Winner-stays king-of-the-hill; anonymous mode hides
+  name + team + salary for stat-blind evaluation. Picks persist to
+  `data/research/user_comparisons.csv`, comments to `player_comments.csv` (both
+  allowlisted in `.gitignore`).
 
 Run with `streamlit run src/app/Home.py`.
 
@@ -242,70 +248,49 @@ Team nicknames in the sheet are `Nate, Seeb, Silv, Kerr, Will, Drew, Couc, Haft`
 Age / Injury / Position / Intangibles → Dynasty Value); cap-unit pricing engine
 (4-stage pipeline: replacement baseline → non-linear scarcity → age-adjusted
 multi-year decay); Streamlit rebuild (Home / Player Card / Roster / Trade /
-Auction) reading V2 master + pricing. V1 engine deleted 2026-07-05; history
-preserved on `main`.
+Auction / Compare) reading V2 master + pricing. V1 engine deleted 2026-07-05;
+history preserved in git.
 
-**Active research branch (2026-06-24):** `wr-weekly-archetypes` (pushed, NOT yet merged) —
-exploratory week-level WR model + archetype tree using per-week pbp aggregation + NGS
-weekly + Vegas lines + rolling defense + rolling player history. Findings in
-[docs/research/wr_weekly_archetypes.md](docs/research/wr_weekly_archetypes.md). Headline:
-predictive R² is tiny (0.024) because per-week is high-variance, BUT the descriptive
-ceiling is R² 0.68 (knowing role + efficiency that week) and the season-aggregated
-weekly model hits R² 0.68 PPG (vs season-level 0.48 — caveat: in-season vs pre-season,
-not strictly comparable). Key counterintuitive finding: aDOT alone is slightly *negative*
-for fantasy production; the dominant archetype is "volume + accurate QB + good YAC" not
-"deep threat + accurate QB". Next: extend the architecture to RB/TE/QB.
+**V1 history (superseded — do not treat as current).** The pre-V2 engine was
+production-anchored VOR pricing (`salary~features` as a secondary "market" lens),
+a per-player context module, a next-season **projection** model
+(`src/models/projection.py`, OOF R² 0.48 on 1,167 transition pairs), and a
+`player_value_2026.csv` master read by a 5-page app including a Market Driver
+page. **All of it was deleted in `c049e99` (Phase 7, 2026-07-05)** — the modules,
+the CSV, and the pages no longer exist. The design rationale is preserved in the
+git history and in [docs/methodology/](docs/methodology/); reach for
+`git show c049e99^:<path>` if any of it needs reviving (the projection model is
+the most likely candidate — nothing in V2 currently predicts *next* season).
 
-**Current state (merged on main 2026-05-29 via PR #2; branch deleted):** the approved plan
-at `~/.claude/plans/ok-i-am-entering-curious-map.md` is fully delivered — per-player context
-(down/up/par), next-season **projection** model + age curves, **dynasty** value, and an
-interactive **Streamlit** app (open-source/free; current AND dynasty value side by side;
-market views = relationship explorer + driver ranking + what-if simulator + over-pay map,
-all positions). All on main as of merge `6123d6a`. Highlights: M1 data dictionary +
-PPG policy ([[ppg-basis-policy]]); S1 team/offense context; **production-pricing fix**
-(deep-baseline + multiplicative consistency factor — top fair 1,090→291, sub-baseline 84%→34%);
-**S2 per-player longitudinal context** (`src/data/context.py`: prior/baseline/delta/z + a
-`year_type` ∈ `{up, par, down, rookie, partial}` glance flag, no-leakage `shift(1).rolling`;
-Jefferson 2025 = `down` + usage intact + results crashed + bad QB context = the rebound signature
-we wanted, identified automatically); **S3 next-season projection model** (`src/models/projection.py`:
-OOF R² 0.48 on 1,167 transition pairs, NFL-wide projected PPG cached; Jefferson 11.1→17.85
-rebound recognized; positional age curves for the dynasty extension); **S4 projection-based
-+ dynasty value** (`projected_value_table` swaps `projected_ppg` in as the value basis →
-Jefferson surplus +132→−2, Hockenson +112→−2; `dynasty_value_table` discounts multi-year
-projected fair across `years_2026` at 0.10/yr; consolidated `data/processed/player_value_2026.csv`
-is the master table the Streamlit app reads); **M5 Streamlit app core + M6 extensions** (`src/app/`:
-`Home.py` over/under board with horizon toggle + filters + colored surplus styling;
-`pages/1_Player_Card.py` per-player deep-dive with multi-year projection chart + context;
-`pages/2_Market_Driver.py` 4 tabs — Driver Ranking, Relationship Explorer, What-if Simulator,
-Over-pay Map; `pages/3_Roster.py` team selector + cap summary + drop/extend/tag/keep
-recommendations encoding rules §6–§9; `pages/4_Auction.py` FA pool ranked by `max_fair_bid`
-with per-position tabs; `pages/5_Trade.py` two-sided trade evaluator with net current +
-dynasty value/cap deltas). Preliminary summary figure.
+**WR weekly research + PyTorch scaffold (landed via PR #14).** Exploratory
+week-level WR model + archetype tree built on per-week pbp aggregation + NGS
+weekly + Vegas lines + rolling defense + rolling player history; plus a PyTorch
+sequence-model scaffold on top of it. Findings in
+[docs/research/wr_weekly_archetypes.md](docs/research/wr_weekly_archetypes.md)
+and [docs/research/wr_weekly_torch.md](docs/research/wr_weekly_torch.md); code in
+[`src/research/`](src/research/). Headline: per-week **predictive** R² is tiny
+(0.024) — single weeks are high-variance — but the **descriptive** ceiling is
+R² 0.68 (knowing role + efficiency that week), and aggregating the weekly model
+to a season hits R² 0.68 on PPG. Counterintuitive finding: aDOT alone is slightly
+*negative* for fantasy production; the dominant archetype is "volume + accurate
+QB + good YAC", not "deep threat + accurate QB". Next: extend to RB/TE/QB.
 
-**Key design decision (2026-05-27):** fair value is **anchored to objective
-production (VOR), not fit to actual salaries.** A `salary ~ features` model learns
-the market's *average* pricing, so it structurally cannot flag *systematic*
-mispricing (e.g. the league overpaying elite QBs) — and the user believes the
-market is inefficient. So the **primary lens is production-anchored**: value over
-replacement (per the 8-team starting lineup, rules §4) priced into cap units by
-redistributing the league's total skill-cap spend by VOR. The old `salary~features`
-model is **kept as a secondary "market price" lens**; its R² is now a *diagnostic
-we deliberately do NOT maximize* (a perfect fit would call everyone fair). The gap
-between the two lenses is the signal. (Top output insight: in a 1-QB league
-replacement QB ≈ 22 PPG, so Mahomes/Lamar at 100–117 read as heavily overpaid;
-elite young RB/WR on cheap deals read as big bargains.) VOR is **risk-adjusted for
-consistency**: `vor_adj = vor − 0.5·downside_deviation` (`value.RISK_LAMBDA`),
-penalizing *bust* weeks (floor risk in a weekly H2H league) but **not** big ceiling
-weeks — boom weeks must not hurt elite RBs like Gibbs/Bijan (user-confirmed).
+> ⚠️ **Re-baseline that 0.68 before trusting it.** The research doc frames it as
+> "0.68 vs 0.48, wins handily" and attributes the 0.48 to `models/production.py`.
+> That's a misattribution: **0.48 was the deleted `projection.py`** (next-season
+> prediction — a strictly harder task, as the doc's own caveat notes), not the
+> Production component. The live same-season Production model is **WR R² 0.816**
+> (see below), which is *higher* than the weekly model's 0.68. The weekly work may
+> still be valuable as an **in-season** tool — that's a genuinely different job
+> from what Production does — but the "wins handily" comparison as written does
+> not hold. Flagged 2026-07-17; not corrected in the research doc itself.
 
-**✅ Pricing fix (2026-05-27, see [[value-pricing-degenerate-fix]]):** the prior subtractive
-risk penalty + $1 floor (84% of players floored to `prod_fair=1`, Puka ≈ 1,090) was replaced
-with (a) a **multiplicative consistency factor** bounded in `[0.5, 1]` (volatile-but-startable
-players are penalized but never zeroed) and (b) **deep-baseline pricing**: redistribute the cap
-pool over `deep_vor = prod_adj − 0.5·replacement[pos]`. Sub-baseline players now get
-`prod_fair = 0` (their salary registers as surplus). Result: rate 87→15, top fair 1,090→291,
-sub-baseline 84%→34%, AJ Brown overpaid by 144 (fair 56), Jefferson by 132 (fair 18). The
-remaining single-season distortions (Jefferson's down 2025) are what the projection (S2–S4) fixes.
+**Live model baselines (measured 2026-07-17, `position_oof_r2`):** the Production
+component is a per-position HistGBR — **QB R² 0.688 · RB 0.829 · WR 0.816 ·
+TE 0.776**. These are player-leaky (KFold over player-seasons; the same player
+appears on both sides of a split), so they are comparable between models on
+identical folds but optimistic as absolute accuracy. See
+[production.md](docs/methodology/production.md).
 
 **Immediate next steps when resuming (priority order):**
 1. **Use it and iterate.** The full V2 stack (framework + pricing + Streamlit) is live.
@@ -320,9 +305,18 @@ remaining single-season distortions (Jefferson's down 2025) are what the project
    that Alec Pierce ≠ AJ Brown at similar DV points to a missing consistency/history
    signal. Belongs in the Intangibles component. Future work.
 4. **Later refinements**: extend historical seasons beyond 2016-25 for a more stable
-   projection basis; reconstruct weekly skill scoring from nflverse so FA pool gets a
+   training basis; reconstruct weekly skill scoring from nflverse so FA pool gets a
    real consistency factor; trade reconciliation (active roster still lags trades);
    multi-tier position overlay UI ([[multi-tier-position-overlay]]).
+5. **Known modelling debt** (found 2026-07-16/17, none of it breaking):
+   - `receptions` is wanted by the RB Production model but absent from the
+     training frame — adding it shifts the DV distribution and therefore
+     silently miscalibrates `pricing.USER_BASELINES` + `pool_scale`. Needs its
+     own pass with a re-calibration ([production.md](docs/methodology/production.md)).
+   - The Production CV is **player-leaky** (`KFold` over player-seasons);
+     `GroupKFold` on `espn_id` would give honest numbers and re-baseline the docs.
+   - `extended_training_frame()` is uncached and rebuilt ~10× per `framework.py`
+     run (~200 nflverse round-trips) — pure perf, no behaviour change.
 
 Minor open items: trade reconciliation (active roster lags trades; Extensions tab
 is authoritative); a couple of league-rule unknowns (extension salary-setting,

@@ -45,6 +45,9 @@ data/raw/
 figures/
 *.png
 
+# Personal working notes (task/idea backlog — not part of the public repo)
+TODOs.md
+
 # OS / editor
 .DS_Store
 .idea/
