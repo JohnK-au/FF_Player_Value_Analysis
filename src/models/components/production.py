@@ -12,10 +12,11 @@ season's positional distribution between 0 PPG (floor) and the season's
 best (top → 100). Same methodology across positions; only the feature set
 changes.
 
-WR and RB implemented (Phases 1B, 2). QB / TE land in Phases 3-4.
+All four positions ship (WR/RB/TE/QB -- Phases 1B/2/3/4).
 """
 from __future__ import annotations
 
+import warnings
 from functools import lru_cache
 from typing import Iterable
 
@@ -49,9 +50,16 @@ WR_FEATURES: tuple[str, ...] = (
 # proxy and goes to the RB Team component instead. yac_att kept (after-contact
 # yards = player power/breaks tackles). receiving stats kept since dynasty
 # value depends on 3-down-back role.
+#
+# `receptions` was declared here but does NOT exist in extended_training_frame(),
+# so it was silently dropped by the availability filter and never trained on --
+# removed to keep this list honest. Adding it means adding the column upstream,
+# which shifts the DV distribution and therefore silently miscalibrates the
+# pricing baselines (see docs/methodology/pricing.md); that is a deliberate
+# modelling change, not a cleanup. Tracked separately.
 RB_FEATURES: tuple[str, ...] = (
     # volume
-    "carries", "snap_pct", "target_share", "receptions",
+    "carries", "snap_pct", "target_share",
     # rushing skill
     "rushing_epa", "ryoe_per_att", "time_to_los", "yac_att",
     # receiving (3-down backs)
@@ -85,6 +93,9 @@ POSITION_FEATURES: dict[str, tuple[str, ...]] = {
     "QB": QB_FEATURES,
 }
 
+# Skill positions with a Production model, in reporting order.
+POSITIONS: tuple[str, ...] = ("QB", "RB", "WR", "TE")
+
 # Geometric recency decay applied to per-season scores. TODO: tune empirically.
 RECENCY_WEIGHTS: tuple[float, ...] = (1.0, 0.5, 0.25, 0.125)
 
@@ -101,6 +112,27 @@ def _pipeline() -> Pipeline:
             random_state=0,
         )),
     ])
+
+
+def _available_features(position: str, train: pd.DataFrame) -> list[str]:
+    """Declared features for `position` that actually exist in `train`.
+
+    Warns rather than raises on a missing feature: a hard failure here would
+    take down the app mid-season if an upstream refresh drops a column, but a
+    silent drop (the previous behaviour) hides feature-name drift entirely --
+    RB trained on 16 of 17 declared features for months that way.
+    """
+    declared = POSITION_FEATURES[position]
+    missing = [c for c in declared if c not in train.columns]
+    if missing:
+        warnings.warn(
+            f"{position} Production: {len(missing)} declared feature(s) missing from "
+            f"the training frame and excluded from the model: {missing}. "
+            f"Training on {len(declared) - len(missing)}/{len(declared)}.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    return [c for c in declared if c in train.columns]
 
 
 def _position_training(position: str) -> pd.DataFrame:
@@ -143,7 +175,7 @@ def _recency_blend(per_season_scores: list[float]) -> float:
 def _position_artifacts(position: str):
     """Cached per-position: (model, feats, anchors, train_df, train_by_id)."""
     train = _position_training(position)
-    feats = [c for c in POSITION_FEATURES[position] if c in train.columns]
+    feats = _available_features(position, train)
     model = _pipeline().fit(train[feats], train["ppg"])
     anchors = _season_anchors(train)
     train_by_id = {
@@ -158,7 +190,7 @@ def position_oof_r2(position: str) -> tuple[float, float]:
     from sklearn.metrics import mean_absolute_error, r2_score
 
     train = _position_training(position)
-    feats = [c for c in POSITION_FEATURES[position] if c in train.columns]
+    feats = _available_features(position, train)
     cv = KFold(5, shuffle=True, random_state=0)
     oof = cross_val_predict(_pipeline(), train[feats], train["ppg"], cv=cv)
     return float(r2_score(train["ppg"], oof)), float(mean_absolute_error(train["ppg"], oof))
@@ -225,16 +257,16 @@ def score(players: pd.DataFrame, position: str) -> pd.DataFrame:
     if position in POSITION_FEATURES:
         return _score_position(players, position)
     out = players.copy()
-    out["production_value"] = NEUTRAL  # QB / TE land in Phases 3-4
+    out["production_value"] = NEUTRAL  # non-skill position (no model)
     return out
 
 
 if __name__ == "__main__":
-    for pos in ("WR", "RB"):
+    for pos in POSITIONS:
         r2, mae = position_oof_r2(pos)
         print(f"{pos} Production model -- OOF R^2 = {r2:.3f}, MAE = {mae:.2f} PPG")
     print()
-    for pos in ("WR", "RB"):
+    for pos in POSITIONS:
         _, _, anchors, _, _ = _position_artifacts(pos)
         print(f"{pos} per-season PPG anchors (0 -> top):")
         for s in sorted(anchors):
