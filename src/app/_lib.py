@@ -125,7 +125,10 @@ def style_surplus(df: pd.DataFrame, col: str):
         if v > 30:
             return "background-color: rgba(214, 67, 67, 0.30); color: #4a0a0a"
         return ""
-    return df.style.map(_color, subset=[col])
+    # Styler.map is pandas>=2.1; on pandas<2 (pinned by nfl_data_py) it is applymap.
+    styler = df.style
+    elementwise = getattr(styler, "map", None) or styler.applymap
+    return elementwise(_color, subset=[col])
 
 
 def fmt_int_or_dash(v) -> str:

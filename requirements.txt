@@ -1,11 +1,18 @@
 # Data ingestion & analysis
-pandas
-numpy
+#
+# pandas/numpy are capped below 2.0 because nfl_data_py 0.3.3 requires
+# `pandas<2.0` and `numpy<2.0`. Leaving them unpinned lets a fresh install
+# resolve to pandas 2.x on one machine and 1.5.x on another, which silently
+# changes API availability (e.g. Styler.map exists only on pandas>=2.1 — see
+# the version-agnostic shim in src/app/_lib.py::style_surplus). Raise these
+# caps only together with nfl_data_py.
+pandas<2.0
+numpy<2.0
 requests
 python-dotenv
 openpyxl          # read the Google Sheet workbook (xlsx export) by tab name
 espn-api          # ESPN fantasy league data (private leagues via cookie auth)
-nfl_data_py       # nflverse player data: age, experience, advanced stats
+nfl_data_py       # nflverse player data: age, experience, advanced stats — pins pandas/numpy <2.0
 pyarrow           # Parquet read/write for cached finalized-season tables
 
 matplotlib        # visualizations
