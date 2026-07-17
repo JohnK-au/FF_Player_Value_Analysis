@@ -101,7 +101,7 @@ def load_ngs_receiving(seasons: list[int] = SEASONS) -> pd.DataFrame:
 
 
 def load_id_crosswalk(seasons: list[int] = SEASONS) -> pd.DataFrame:
-    """Per-season gsis_id ↔ espn_id ↔ age/years_exp from seasonal rosters."""
+    """Per-season gsis_id ↔ espn_id ↔ pfr_id ↔ age/years_exp from seasonal rosters."""
     out = RESEARCH_DIR / "id_crosswalk.parquet"
 
     def _build():
@@ -110,12 +110,28 @@ def load_id_crosswalk(seasons: list[int] = SEASONS) -> pd.DataFrame:
         frames = []
         for s in seasons:
             r = nfl.import_seasonal_rosters([s])[
-                ["season", "player_id", "espn_id", "position", "age", "years_exp"]
+                ["season", "player_id", "espn_id", "pfr_id", "position", "age", "years_exp"]
             ].copy()
             r["espn_id"] = pd.to_numeric(r["espn_id"], errors="coerce").astype("Int64")
             r = r.rename(columns={"player_id": "gsis_id"})
             frames.append(r)
         return pd.concat(frames, ignore_index=True).drop_duplicates(["season", "gsis_id"])
+    return cached_parquet(out, _build)
+
+
+def load_snaps_weekly(seasons: list[int] = SEASONS) -> pd.DataFrame:
+    """Per (season, week, pfr_id) offensive snap share over wk 1..FANTASY_WEEKS."""
+    out = RESEARCH_DIR / "snaps_weekly.parquet"
+
+    def _build():
+        import nfl_data_py as nfl
+
+        s = nfl.import_snap_counts(list(seasons))
+        s = s[(s["game_type"] == "REG") & s["week"].between(1, FANTASY_WEEKS)].copy()
+        keep = ["season", "week", "pfr_player_id", "offense_pct", "offense_snaps"]
+        return s[keep].rename(columns={"pfr_player_id": "pfr_id",
+                                       "offense_pct": "snap_pct",
+                                       "offense_snaps": "snap_count"})
     return cached_parquet(out, _build)
 
 
@@ -303,16 +319,21 @@ def build_wr_weekly_features_season(season: int) -> pd.DataFrame:
     ngs = ngs[ngs["season"] == season]
     rec_w = rec_w.merge(ngs.drop(columns=["season"]), on=["week", "gsis_id"], how="left")
 
-    # join espn_id + age via the crosswalk
+    # join espn_id + pfr_id + age via the crosswalk
     xw = load_id_crosswalk()
     xw_s = xw[(xw["season"] == season) & xw["position"].eq("WR")]
     rec_w = rec_w.merge(
-        xw_s[["gsis_id", "espn_id", "age", "years_exp"]],
+        xw_s[["gsis_id", "espn_id", "pfr_id", "age", "years_exp"]],
         on="gsis_id", how="inner",  # inner → only keep actual WRs with an espn_id
     )
 
     # join player-static (draft + combine)
     rec_w = rec_w.merge(player_static(), on="espn_id", how="left")
+
+    # join weekly snap share (via pfr_id)
+    snaps = load_snaps_weekly()
+    snaps_s = snaps[snaps["season"] == season].drop(columns=["season"])
+    rec_w = rec_w.merge(snaps_s, on=["week", "pfr_id"], how="left")
 
     # join target: league-scored weekly points for the rostered universe
     from src.data.dataset import load_weekly

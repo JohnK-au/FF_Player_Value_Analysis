@@ -20,5 +20,10 @@ plotly            # interactive (hover) visualizations
 scikit-learn      # fair-value model
 streamlit         # interactive app (local dashboard) — src/app/
 
+# Deep learning (research: WR weekly sequence models — src/research/wr_torch/)
+torch             # PyTorch. CPU build is fine for this data size (no CUDA needed).
+                  # If the default download is large/slow, use the CPU-only wheel index:
+                  #   pip install torch --index-url https://download.pytorch.org/whl/cpu
+
 # Planned — uncomment as features land
 # jupyter

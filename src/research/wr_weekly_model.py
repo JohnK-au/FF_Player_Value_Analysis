@@ -63,12 +63,29 @@ PLAYER_ROLL_BASE = [
     "fantasy_points", "targets", "target_share",
     "air_yards", "air_yards_share", "rec_epa",
     "team_pass_epa_play", "team_cpoe",
-    "avg_separation", "catch_percentage",
+    "avg_separation", "avg_intended_air_yards", "avg_yac_above_expectation",
+    "catch_percentage",
+    "snap_pct",  # added 2026-06-24 — option 3 from the iteration plan
 ]
 ROLL_WINDOW = 4
 PLAYER_ROLL_FEATS = [f"{c}_roll{ROLL_WINDOW}" for c in PLAYER_ROLL_BASE]
 
 ALL_FEATS = STATIC_FEATS + ENV_FEATS + DEF_ROLL_FEATS + PLAYER_ROLL_FEATS
+
+# Descriptive ("leaky") variant: same-week ROLE + EFFICIENCY context. NOT the trivially
+# score-correlated stats (targets, receptions, air_yards, rec_epa) — those would just
+# regress fantasy points onto its own components. The point of this variant is the
+# CEILING of predictability when we know how the player was *used* and how *efficient*
+# he was, not the box score.
+LEAKY_DESCRIPTIVE_FEATS = [
+    # Role realized in-game
+    "target_share", "air_yards_share", "snap_pct",
+    # NGS efficiency (single-game)
+    "avg_separation", "avg_cushion", "avg_intended_air_yards",
+    "catch_percentage", "avg_yac_above_expectation",
+    # Team passing context (this week)
+    "team_pass_epa_play", "team_cpoe", "team_completion_pct", "team_pass_rate",
+] + ENV_FEATS + STATIC_FEATS + DEF_ROLL_FEATS
 
 
 # ---- Data loading + rolling helpers ----------------------------------------
@@ -99,6 +116,29 @@ def fit_predictive_model(df: pd.DataFrame, feats: list[str] | None = None):
     d = df.dropna(subset=[TARGET])
     # Require at least one rolling-history value (drop a player's first week with no prior).
     d = d.dropna(subset=PLAYER_ROLL_FEATS, how="all").copy()
+    X, y = d[feats], d[TARGET]
+    pipe = HistGradientBoostingRegressor(
+        max_depth=5, learning_rate=0.05, max_iter=400, l2_regularization=1.0,
+        random_state=0,
+    )
+    cv = KFold(5, shuffle=True, random_state=0)
+    oof = cross_val_predict(pipe, X, y, cv=cv)
+    pipe.fit(X, y)
+    return pipe, d, feats, oof
+
+
+def fit_descriptive_model(df: pd.DataFrame):
+    """Same-week ROLE + EFFICIENCY features → ceiling of predictability.
+
+    Answers "if we knew the player's actual game role and efficiency that week, how
+    predictable would his fantasy points be?" — separates ROLE uncertainty from
+    OUTCOME uncertainty. Gap between this R² and the predictive R² is "how much we
+    don't know pre-game about role/efficiency."
+    """
+    feats = [c for c in LEAKY_DESCRIPTIVE_FEATS if c in df.columns]
+    d = df.dropna(subset=[TARGET]).copy()
+    # require at least the core role features
+    d = d.dropna(subset=["target_share", "snap_pct"], how="all")
     X, y = d[feats], d[TARGET]
     pipe = HistGradientBoostingRegressor(
         max_depth=5, learning_rate=0.05, max_iter=400, l2_regularization=1.0,
@@ -182,3 +222,33 @@ if __name__ == "__main__":
     if len(top_two) == 2:
         print(f"\n=== Mean WR fantasy_points by quartile bins of {top_two[0]} × {top_two[1]} ===")
         print(conditional_heat(d, top_two[0], top_two[1]).to_string())
+
+    # --- Season aggregation: do weekly predictions stack to a season projection? ---
+    print("\n=== SEASON AGGREGATION — weekly OOF predictions stacked per (season, player) ===")
+    agg = d.assign(_pred=oof).groupby(["season", "espn_id"]).agg(
+        n_weeks=("_pred", "size"),
+        actual_total=(TARGET, "sum"),
+        pred_total=("_pred", "sum"),
+        actual_ppg=(TARGET, "mean"),
+        pred_ppg=("_pred", "mean"),
+    ).reset_index()
+    agg = agg[agg["n_weeks"] >= 6]  # need a meaningful sample
+    print(f"  n={len(agg)} season-player records (>=6 weeks)")
+    print(f"  Season-total points: R² = {r2_score(agg['actual_total'], agg['pred_total']):.3f}   "
+          f"MAE = {mean_absolute_error(agg['actual_total'], agg['pred_total']):.1f} pts")
+    print(f"  Season PPG:          R² = {r2_score(agg['actual_ppg'], agg['pred_ppg']):.3f}   "
+          f"MAE = {mean_absolute_error(agg['actual_ppg'], agg['pred_ppg']):.2f} PPG")
+    print("  (compare PPG R² to existing season-level projection model R²=0.48 — "
+          "if weekly-aggregated beats season-fitted, the architecture earns its place.)")
+
+    # --- Descriptive (leaky) variant: ceiling on predictability -------------
+    print("\n=== DESCRIPTIVE (leaky) — same-week role + efficiency, ceiling R² ===")
+    d_pipe, d_d, d_feats, d_oof = fit_descriptive_model(df)
+    d_y = d_d[TARGET]
+    print(f"  n={len(d_d)}  features={len(d_feats)}")
+    print(f"  OOF R² = {r2_score(d_y, d_oof):.3f}   MAE = {mean_absolute_error(d_y, d_oof):.2f} pts")
+    print("  (gap vs predictive R²=0.024 = role/efficiency uncertainty pre-game)")
+    print("  Top 8 descriptive features:")
+    d_imp = permutation_importance(d_pipe, d_d[d_feats], d_y, n_repeats=3, random_state=0, n_jobs=-1)
+    for n, v in sorted(zip(d_feats, d_imp.importances_mean), key=lambda x: -x[1])[:8]:
+        print(f"    {n:36}  {v:.3f}")

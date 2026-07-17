@@ -262,6 +262,29 @@ git history and in [docs/methodology/](docs/methodology/); reach for
 `git show c049e99^:<path>` if any of it needs reviving (the projection model is
 the most likely candidate — nothing in V2 currently predicts *next* season).
 
+**WR weekly research + PyTorch scaffold (landed via PR #14).** Exploratory
+week-level WR model + archetype tree built on per-week pbp aggregation + NGS
+weekly + Vegas lines + rolling defense + rolling player history; plus a PyTorch
+sequence-model scaffold on top of it. Findings in
+[docs/research/wr_weekly_archetypes.md](docs/research/wr_weekly_archetypes.md)
+and [docs/research/wr_weekly_torch.md](docs/research/wr_weekly_torch.md); code in
+[`src/research/`](src/research/). Headline: per-week **predictive** R² is tiny
+(0.024) — single weeks are high-variance — but the **descriptive** ceiling is
+R² 0.68 (knowing role + efficiency that week), and aggregating the weekly model
+to a season hits R² 0.68 on PPG. Counterintuitive finding: aDOT alone is slightly
+*negative* for fantasy production; the dominant archetype is "volume + accurate
+QB + good YAC", not "deep threat + accurate QB". Next: extend to RB/TE/QB.
+
+> ⚠️ **Re-baseline that 0.68 before trusting it.** The research doc frames it as
+> "0.68 vs 0.48, wins handily" and attributes the 0.48 to `models/production.py`.
+> That's a misattribution: **0.48 was the deleted `projection.py`** (next-season
+> prediction — a strictly harder task, as the doc's own caveat notes), not the
+> Production component. The live same-season Production model is **WR R² 0.816**
+> (see below), which is *higher* than the weekly model's 0.68. The weekly work may
+> still be valuable as an **in-season** tool — that's a genuinely different job
+> from what Production does — but the "wins handily" comparison as written does
+> not hold. Flagged 2026-07-17; not corrected in the research doc itself.
+
 **Live model baselines (measured 2026-07-17, `position_oof_r2`):** the Production
 component is a per-position HistGBR — **QB R² 0.688 · RB 0.829 · WR 0.816 ·
 TE 0.776**. These are player-leaky (KFold over player-seasons; the same player

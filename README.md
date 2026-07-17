@@ -90,6 +90,7 @@ Run with `streamlit run src/app/Home.py`.
 
 - **Language:** Python 3 (uses a local `.venv`)
 - **Core libs:** `pandas`, `numpy`, `scikit-learn` (HistGBR), `nfl_data_py`, `espn-api`
+- **Deep learning (research):** `torch` — WR weekly sequence models (`src/research/wr_torch/`)
 - **App:** `streamlit`, `plotly`
 - **Viz:** `matplotlib`, `plotly`
 
@@ -105,6 +106,7 @@ Run with `streamlit run src/app/Home.py`.
 | [`docs/methodology/`](docs/methodology/) | V2 framework — per-component spec (production, team, age, injury, position, combination) |
 | [`docs/figures.md`](docs/figures.md) | Figure catalog (under `figures/{contracts,cap,value}/`) |
 | [`docs/analysis_plan.md`](docs/analysis_plan.md) | Historical roadmap (predates V2 framework; see CLAUDE.md for current state) |
+| [`docs/research/wr_weekly_torch.md`](docs/research/wr_weekly_torch.md) | PyTorch sequence-model plan, learning curriculum, cross-device onboarding (branch-only) |
 
 ## Project Structure
 
@@ -120,6 +122,7 @@ Run with `streamlit run src/app/Home.py`.
 │   │   ├── components/            # V2 six-component framework (one module per component + combine + framework orchestrator)
 │   │   └── pricing.py             # 4-stage cap-unit pricing engine (layered on V2 quality scores)
 │   ├── viz/                       # figures + interactive HTMLs (workshop tools for weight/param tuning)
+│   ├── research/                  # exploratory (branch-only): WR weekly features + models; wr_torch/ = PyTorch sequence models
 │   └── app/                       # Streamlit app (Home + Player Card + Roster + Trade + Auction)
 ├── .env.example                   # template for local config
 ├── requirements.txt
