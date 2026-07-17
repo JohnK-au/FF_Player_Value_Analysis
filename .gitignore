@@ -8,6 +8,7 @@ dist/
 
 # Virtual environments
 .venv/
+.venv-tabfm/
 venv/
 env/
 .python-version
