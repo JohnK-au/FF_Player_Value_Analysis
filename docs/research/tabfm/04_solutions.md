@@ -51,4 +51,103 @@ world). Exact numbers vary by machine/seed; direction is what matters.
 
 ---
 
-*(Phase 1+ solutions are appended when those scaffolds exist.)*
+## Phase 1 — `build_dataset.py`
+
+### TODO(you) 1.1 — weekly points → consistency features
+
+```python
+def consistency_features(weekly: pd.DataFrame) -> pd.DataFrame:
+    def downside_dev(s):
+        m = s.mean()
+        below = s[s < m]
+        return ((below - m) ** 2).mean() ** 0.5 if len(below) else 0.0
+
+    cons = (
+        weekly.groupby(["espn_id", "season"])["points"]
+        .agg(
+            weekly_std="std",
+            weekly_mean="mean",
+            downside_dev=downside_dev,
+            boom_weeks=lambda s: (s >= BOOM_POINTS).mean(),
+            bust_weeks=lambda s: (s < BUST_POINTS).mean(),
+            n_weeks="count",
+        )
+        .reset_index()
+    )
+    cons["weekly_cv"] = cons["weekly_std"] / cons["weekly_mean"]
+    return cons.drop(columns=["weekly_mean"])
+```
+
+**Why it looks like this:**
+- One `groupby(["espn_id", "season"])` does everything — each aggregation is a
+  column in the output, named at the call site (pandas "named aggregation").
+- `downside_dev` measures only below-mean weeks: a 40-point boom must not read
+  as "inconsistency" the way a 2-point bust does. Same idea your V1 engine used.
+- We **drop `weekly_mean`**: it's nearly the frame's `ppg` again (over a
+  slightly different week range) and near-duplicate features add noise, not
+  information. Keeping it wouldn't be *wrong* — it's a judgment call to note.
+- Edge cases worth knowing you accepted: a 1-week season has `std = NaN`
+  (pandas uses ddof=1), and `weekly_cv` explodes when the mean is near zero.
+  `n_weeks` exists precisely so later phases can filter these if they distort.
+
+### TODO(you) 1.2 — the transition self-join
+
+```python
+def build_transitions(season_table: pd.DataFrame) -> pd.DataFrame:
+    outcomes = season_table[["espn_id", "season", "ppg", "games"]].copy()
+    outcomes["season"] = outcomes["season"] - 1        # t+1 row lines up with t
+    outcomes = outcomes.rename(columns={"ppg": "target_ppg",
+                                        "games": "target_games"})
+    return season_table.merge(outcomes, on=["espn_id", "season"], how="inner")
+```
+
+**Why it looks like this:**
+- The mental model: take the same table, shift the *outcome* copy's season
+  back one year, and merge — so 2023 features sit beside 2024 results.
+- **Why `inner` is correct:** a rookie's first season has no season-t row → no
+  pair; a player who left the league has no t+1 row → no pair. Both exclusions
+  we *wanted* happen as a property of the join, with zero special-case code.
+  (2025 feature rows also vanish naturally — there are no 2026 outcomes yet.)
+- Only `ppg` and `games` cross the timeline, pre-renamed to `target_*` —
+  nothing from t+1 can sneak in unlabeled, which is what 1.3 verifies.
+
+### TODO(you) 1.3 — leakage checks
+
+```python
+def run_leakage_checks(transitions: pd.DataFrame,
+                       season_table: pd.DataFrame) -> None:
+    dup = transitions.duplicated(["espn_id", "season"]).sum()
+    assert dup == 0, f"{dup} duplicate (espn_id, season) rows -- join fanned out"
+
+    target_cols = sorted(c for c in transitions.columns
+                         if c.startswith("target_"))
+    assert target_cols == ["target_games", "target_ppg"], (
+        f"unexpected future-info columns: {target_cols}")
+
+    assert transitions["season"].between(FIRST_SEASON,
+                                         LAST_FEATURE_SEASON).all()
+    assert transitions["target_ppg"].notna().all(), "inner join should forbid this"
+
+    lookup = season_table.set_index(["espn_id", "season"])["ppg"]
+    for _, row in transitions.sample(3, random_state=0).iterrows():
+        expected = lookup.loc[(row["espn_id"], row["season"] + 1)]
+        assert row["target_ppg"] == expected, (
+            f"{row['name']} {row['season']}: target_ppg {row['target_ppg']} "
+            f"!= frame ppg {expected}")
+    print("leakage checks passed")
+```
+
+**Why it looks like this:**
+- (a) catches the classic silent killer: a merge key that isn't as unique as
+  you believed *duplicates* rows, and every downstream metric quietly inflates.
+- (b) is the naming-rule tripwire — if anyone later adds a t+1 column without
+  the `target_` prefix, this won't catch it, but if they add one *with* it,
+  the feature-selection code in Phase 2 excludes it mechanically. Convention +
+  tripwire together are the defense.
+- (d) is the one that matters most: shape checks pass on beautifully-wrong
+  data. Only re-deriving a few values by an independent path (`set_index` +
+  `.loc`, not the merge) proves the join grabbed the *right* numbers.
+
+---
+
+*(Phase 2+ solutions are appended when those scaffolds exist.)*

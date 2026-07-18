@@ -81,6 +81,29 @@ The delta *measures* what the consistency family is worth instead of arguing
 about it. This is an ablation study — the standard honest way to value a
 feature group, and a technique worth having in your kit.
 
+**Advanced-stats tier (decided):** we also include a curated bundle of
+nflverse efficiency stats (`snap_pct`, `target_share`, `wopr`, `receiving_epa`,
+`rushing_epa`) as a second ablation tier — measured, not assumed, for the same
+reason. Ultra-sparse stats (`catch_pct`, `cpoe`, `passing_epa`, 3–9% populated)
+are held back: at that coverage mean-imputation would make them ~90%
+fabricated constant.
+
+> **Open idea — split the advanced ablation by position (revisit at Phase 3).**
+> Advanced stats are *position-partitioned by nature*: QBs have `passing_epa`
+> and no `catch_pct`; receivers the reverse. So a single pooled all-positions
+> model is where the sparsity hurts most — half the column is structurally
+> N/A, not merely unobserved. Running the advanced ablation **per position**
+> (separate QB / RB / WR / TE models) would make each model's advanced block
+> dense, and would let us bring back the sparse-but-valuable stats (`catch_pct`
+> for receivers, `passing_epa`/`cpoe` for QBs) *within the position where they
+> apply*. Two things to weigh when we get there: (a) it shrinks each model's
+> context — QB transitions are the smallest pool, and TabFM is context-hungry,
+> so per-position may trade sparsity for too-few rows; (b) it makes TabFM
+> structurally parallel to the V2 engine (which is already per-position),
+> which arguably *strengthens* the head-to-head comparison. Decision deferred
+> to Phase 3, once we've seen the pooled numbers as a baseline. (Raised by the
+> user, 2026-07-17.)
+
 ## §4 Why baselines come before TabFM, and which ones
 
 **A number without a baseline is meaningless.** "TabFM hit R² 0.45" sounds
