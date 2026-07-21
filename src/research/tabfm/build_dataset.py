@@ -81,6 +81,12 @@ ADVANCED_STATS = ["snap_pct", "target_share", "wopr",
 CONSISTENCY_STATS = ["weekly_std", "weekly_cv", "downside_dev",
                      "boom_weeks", "bust_weeks", "n_weeks"]
 
+# Missingness indicator (added at assembly, NOT in 1.1): 1 when a player-season
+# has no weekly consistency data (pre-2022, or absent from the weekly table).
+# Its own toggle so Phase 3 can ablate "does knowing-we-don't-know carry signal?"
+# independently of the consistency values themselves. See design rationale s3.
+CONSISTENCY_MISSING_FLAG = "consistency_missing"
+
 # Provisional thresholds -- revisit at the feature-review checkpoint.
 BOOM_POINTS = 20.0
 BUST_POINTS = 5.0
@@ -88,6 +94,25 @@ BUST_POINTS = 5.0
 
 # ------------------------------------------------------------------ loaders
 # Pre-filled: IO plumbing, not the lesson.
+
+def _dedup_key(df: pd.DataFrame,
+               key: tuple[str, ...] = ("espn_id", "season")) -> pd.DataFrame:
+    """One row per `key`, keeping the most complete (fewest-NaN) copy.
+
+    The upstream training frame + nflverse advanced tables carry a few duplicate
+    player-seasons -- mostly exact-identical rows, plus a few that differ only by
+    a missing `team` (e.g. a mid-season trade recorded twice). Left over, they
+    make the self-join fan out (leakage check (a) catches it). Collapsing to the
+    most-complete row is safe here because the differing copies share identical
+    stats; only sparse identity fields like `team` vary.
+    """
+    df = df.assign(_na=df.isna().sum(axis=1))
+    df = (df.sort_values("_na")
+            .drop_duplicates(list(key), keep="first")
+            .drop(columns="_na")
+            .reset_index(drop=True))
+    return df
+
 
 def load_season_frame() -> pd.DataFrame:
     """Skill player-seasons 2016-2025 with identity + league fantasy output."""
@@ -98,7 +123,7 @@ def load_season_frame() -> pd.DataFrame:
     df = pd.read_csv(path)[IDENTITY_COLS]
     df = df[df["position_group"].isin(SKILL_POSITIONS)].reset_index(drop=True)
     assert df["espn_id"].notna().all(), "null espn_id would poison the self-join"
-    return df
+    return _dedup_key(df)  # a few duplicate player-seasons upstream; collapse them
 
 
 def load_boxscores() -> pd.DataFrame:
@@ -142,7 +167,7 @@ def load_advanced() -> pd.DataFrame:
         a["season"] = season
         keep = ["espn_id", "season"] + [c for c in ADVANCED_STATS if c in a.columns]
         frames.append(a[keep])
-    return pd.concat(frames, ignore_index=True)
+    return _dedup_key(pd.concat(frames, ignore_index=True))  # traded players dup'd
 
 
 # ------------------------------------------------------- consistency features
@@ -168,8 +193,28 @@ def load_advanced() -> pd.DataFrame:
 # Stuck after a real attempt? -> 04_solutions.md (1.1)
 # =========================================================================
 def consistency_features(weekly: pd.DataFrame) -> pd.DataFrame:
-    raise NotImplementedError("TODO(you) 1.1 -- see the block above")
+    def downside_dev(s, floor=None):
+        m = s.mean() if floor is None else floor
+        below = s[s<m]
+        return ((m-below) ** 2).mean() ** 0.5 if len(below) else 0.0
 
+    result = weekly.groupby(['espn_id', 'season'])['points'].agg(
+        weekly_std='std',
+        weekly_mean='mean',
+        n_weeks='count',
+        boom_weeks=lambda s: (s >= BOOM_POINTS).mean(),
+        bust_weeks=lambda s: (s < BUST_POINTS).mean(),
+        downside_dev=downside_dev,
+    )
+
+    result['weekly_cv'] = result['weekly_std'] / result['weekly_mean']
+    # Near-zero (or negative) weekly means blow weekly_cv up to +/-inf, which
+    # errors sklearn models outright. Coerce to NaN so it flows through the same
+    # imputation path as any other missing value (and gets flagged by the
+    # consistency_missing indicator added at assembly). See design rationale s3.
+    result['weekly_cv'] = result['weekly_cv'].replace([np.inf, -np.inf], np.nan)
+
+    return result.drop(columns = 'weekly_mean').reset_index()
 
 # --------------------------------------------------------- season-level table
 # Pre-filled: two left joins. NaN semantics are deliberate and documented:
@@ -182,6 +227,11 @@ def assemble_season_table(frame: pd.DataFrame, box: pd.DataFrame,
     t = frame.merge(box, on=["espn_id", "season"], how="left")
     t = t.merge(cons, on=["espn_id", "season"], how="left")
     t = t.merge(adv, on=["espn_id", "season"], how="left")
+    # Missingness indicator: the consistency left-join yields all-NaN rows for
+    # player-seasons with no weekly data (n_weeks becomes NaN). Flag them so the
+    # model can learn that "unknown consistency" is itself informative, rather
+    # than silently reading a mean-imputed value as if it were observed.
+    t[CONSISTENCY_MISSING_FLAG] = t["n_weeks"].isna().astype(int)
     return t
 
 
@@ -204,8 +254,11 @@ def assemble_season_table(frame: pd.DataFrame, box: pd.DataFrame,
 # Stuck after a real attempt? -> 04_solutions.md (1.2)
 # =========================================================================
 def build_transitions(season_table: pd.DataFrame) -> pd.DataFrame:
-    raise NotImplementedError("TODO(you) 1.2 -- see the block above")
-
+    outcomes = season_table[["espn_id", "season", "ppg", "games"]].copy()
+    outcomes["season"] = outcomes["season"] - 1
+    outcomes = outcomes.rename(columns={ "ppg" : "target_ppg",
+                                        "games" : "target_games"})
+    return season_table.merge(outcomes, on=["espn_id", "season"], how="inner")
 
 # ------------------------------------------------------------- leakage checks
 # =========================================================================
@@ -227,7 +280,29 @@ def build_transitions(season_table: pd.DataFrame) -> pd.DataFrame:
 # =========================================================================
 def run_leakage_checks(transitions: pd.DataFrame,
                        season_table: pd.DataFrame) -> None:
-    raise NotImplementedError("TODO(you) 1.3 -- see the block above")
+    dup = transitions.duplicated(["espn_id", "season"]).sum()
+    assert dup == 0, f"{dup} duplicate (espn_id, season) rows -- join fanned out"
+
+    # (b) The self-join must add EXACTLY the two outcome columns and nothing
+    # else. Check what the merge ADDED (set difference vs season_table) rather
+    # than scanning a "target_" prefix: `target_share` is a season-t FEATURE
+    # that also starts with target_, so a prefix scan false-positives. Set
+    # difference is both more precise and collision-proof.
+    added = sorted(set(transitions.columns) - set(season_table.columns))
+    assert added == ["target_games", "target_ppg"], (
+        f"self-join added unexpected columns (expected only the 2 outcomes): {added}")
+
+    assert transitions["season"].between(FIRST_SEASON,
+                                         LAST_FEATURE_SEASON).all()
+    assert transitions["target_ppg"].notna().all(), "inner join should forbid this"
+
+    lookup = season_table.set_index(["espn_id", "season"])["ppg"]
+    for _, row in transitions.sample(3, random_state=0).iterrows():
+        expected = lookup.loc[(row["espn_id"], row["season"] + 1)]
+        assert row["target_ppg"] == expected, (
+            f"{row['name']} {row['season']}: target_ppg {row['target_ppg']} "
+            f"!= frame ppg {expected}")
+    print("leakage checks passed")
 
 
 # ------------------------------------------------------------ data dictionary
@@ -253,6 +328,7 @@ COL_DOCS = {
     "boom_weeks": (f"Share of weeks >= {BOOM_POINTS} pts", "derived", "2022+ else NaN"),
     "bust_weeks": (f"Share of weeks < {BUST_POINTS} pts", "derived", "2022+ else NaN"),
     "n_weeks": ("Weekly rows behind the consistency stats", "derived", "2022+ else NaN"),
+    "consistency_missing": ("1 if no weekly consistency data for this player-season (pre-2022 etc.)", "derived", "all"),
     "snap_pct": ("ADVANCED tier: share of team snaps played", "nflverse advanced", "~69%, sparse"),
     "target_share": ("ADVANCED tier: share of team targets", "nflverse advanced", "~23%, sparse"),
     "wopr": ("ADVANCED tier: weighted opportunity rating", "nflverse advanced", "~23%, sparse"),

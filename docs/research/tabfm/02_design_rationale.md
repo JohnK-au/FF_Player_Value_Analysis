@@ -88,6 +88,35 @@ reason. Ultra-sparse stats (`catch_pct`, `cpoe`, `passing_epa`, 3–9% populated
 are held back: at that coverage mean-imputation would make them ~90%
 fabricated constant.
 
+**How consistency is measured, and the ppg confound (decided 2026-07-21).**
+Consistency is genuinely confounded with scoring level — in this data
+`corr(mean_ppg, weekly_std) = 0.84` (elites swing more in absolute points; a
+statistician calls this *heteroscedasticity*). Four decisions follow, all
+aimed at *not* baking assumptions in:
+
+1. **Keep the consistency features raw; do not pre-combine with ppg.** A ratio
+   like coefficient of variation (std/mean) forces one rigid functional form
+   and, as the tier table shows, *over-corrects* (low scorers look wildly
+   volatile). TabFM and tree models can learn the ppg×consistency *interaction*
+   themselves if fed both raw — e.g. "high volatility is bad only when ppg is
+   also low." Let the model contextualize; don't do it for it.
+2. **Missingness indicator instead of dropping.** Rows with absent consistency
+   (pre-2022, near-zero-mean, <4 weeks) get a boolean flag rather than losing
+   the feature. Mean-imputation silently treats "unknown" as "average"; the
+   flag lets the model learn that *not knowing* a player's consistency is itself
+   informative. It's a third ablation tier — we measure whether it helps.
+   (`weekly_cv = ±inf` from near-zero means is coerced to NaN first.)
+3. **Stratified ablation** answers "does consistency matter only above a ppg
+   threshold?" — run the consistency ablation separately on high- vs low-ppg
+   players (Phase 3/4). An interaction the model finds natively, but one worth
+   *measuring* explicitly.
+4. **Residualized-consistency (optional experiment).** Regress `weekly_std` on
+   `ppg` and use the residual — volatility relative to what's expected for that
+   scoring level — as a deconfounded alternative, ablated against raw std. This
+   is the *principled* deconfounding; the ablation decides if it beats letting
+   the model do it. Prior art to cite: coefficient of variation, and finance's
+   Sharpe / **Sortino** ratios (our `downside_dev` is the Sortino denominator).
+
 > **Open idea — split the advanced ablation by position (revisit at Phase 3).**
 > Advanced stats are *position-partitioned by nature*: QBs have `passing_epa`
 > and no `catch_pct`; receivers the reverse. So a single pooled all-positions
