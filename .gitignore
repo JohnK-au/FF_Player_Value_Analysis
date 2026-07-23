@@ -55,3 +55,6 @@ TODOs.md
 .vscode/
 streamlit_log.txt
 streamlit_err.txt
+
+# TabFM scratch "current step" panel (kept open in a side tab, not docs)
+docs/research/tabfm/_now.md

@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TabFM Pipeline — Architecture</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --paper:#ECEDEA; --surface:#F5F6F3; --surface-2:#E3E5E1;
+    --ink:#1B2029; --ink-soft:#4A515C; --ink-faint:#79808B;
+    --line:#D2D4CE; --line-soft:#DEE0DB;
+    --known:#B96D12; --known-soft:#F0E2CE;      /* season t / model / amber */
+    --future:#3E5C76; --future-soft:#DDE4EA;     /* season t+1 / target / slate */
+    --good:#2E7D53; --danger:#B23A3A;
+    --mono:ui-monospace,"SF Mono","Menlo","Consolas",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --maxprose:70ch; --maxwide:1080px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#12151B; --surface:#191D25; --surface-2:#222833;
+      --ink:#DCDFE4; --ink-soft:#A7ADB7; --ink-faint:#767D88;
+      --line:#2A303A; --line-soft:#232932;
+      --known:#E0913A; --known-soft:#3A2E1C;
+      --future:#7FA0BC; --future-soft:#20303E;
+      --good:#5FB585; --danger:#D97A7A;
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#ECEDEA; --surface:#F5F6F3; --surface-2:#E3E5E1;
+    --ink:#1B2029; --ink-soft:#4A515C; --ink-faint:#79808B;
+    --line:#D2D4CE; --line-soft:#DEE0DB;
+    --known:#B96D12; --known-soft:#F0E2CE; --future:#3E5C76; --future-soft:#DDE4EA;
+    --good:#2E7D53; --danger:#B23A3A;
+  }
+  :root[data-theme="dark"] {
+    --paper:#12151B; --surface:#191D25; --surface-2:#222833;
+    --ink:#DCDFE4; --ink-soft:#A7ADB7; --ink-faint:#767D88;
+    --line:#2A303A; --line-soft:#232932;
+    --known:#E0913A; --known-soft:#3A2E1C; --future:#7FA0BC; --future-soft:#20303E;
+    --good:#5FB585; --danger:#D97A7A;
+  }
+
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); line-height:1.6;
+    font-size:17px; letter-spacing:.005em;
+  }
+  .wrap { max-width:var(--maxwide); margin:0 auto; padding:0 24px; }
+  .prose { max-width:var(--maxprose); }
+  p { color:var(--ink-soft); }
+  strong { color:var(--ink); font-weight:650; }
+  code, .mono { font-family:var(--mono); }
+  a { color:var(--known); }
+
+  /* ---- header ---- */
+  header { padding:72px 0 40px; border-bottom:1px solid var(--line); }
+  .eyebrow {
+    font-family:var(--mono); font-size:12.5px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--ink-faint); margin:0 0 18px;
+  }
+  h1 {
+    font-size:clamp(34px,6vw,54px); line-height:1.04; margin:0 0 20px;
+    font-weight:780; letter-spacing:-.02em; text-wrap:balance; color:var(--ink);
+  }
+  h1 .fade { color:var(--ink-faint); }
+  .lede { font-size:20px; max-width:60ch; color:var(--ink-soft); margin:0; }
+  .meta {
+    display:flex; flex-wrap:wrap; gap:10px 26px; margin-top:30px;
+    font-family:var(--mono); font-size:13px; color:var(--ink-faint);
+  }
+  .meta b { color:var(--known); font-weight:600; }
+
+  /* ---- sections ---- */
+  section { padding:56px 0; border-bottom:1px solid var(--line-soft); }
+  .snum {
+    font-family:var(--mono); font-size:13px; color:var(--known);
+    letter-spacing:.1em; margin:0 0 10px;
+  }
+  h2 {
+    font-size:clamp(24px,3.4vw,32px); line-height:1.15; margin:0 0 20px;
+    font-weight:720; letter-spacing:-.015em; text-wrap:balance; color:var(--ink);
+  }
+  h3 {
+    font-size:18px; margin:34px 0 12px; font-weight:670; color:var(--ink);
+    letter-spacing:-.01em;
+  }
+  .prose p { margin:0 0 16px; }
+
+  /* ---- generic panels ---- */
+  .panel {
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:12px; padding:22px 24px; margin:26px 0;
+  }
+  .scroll { overflow-x:auto; margin:26px 0; padding-bottom:4px; }
+  .callout {
+    border-left:3px solid var(--known); background:var(--known-soft);
+    border-radius:0 10px 10px 0; padding:14px 20px; margin:24px 0;
+    font-size:15.5px; color:var(--ink);
+  }
+  .callout.future { border-left-color:var(--future); background:var(--future-soft); }
+  .callout .lbl {
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-faint); display:block; margin-bottom:5px;
+  }
+
+  /* ---- pipeline rail ---- */
+  .rail { display:flex; align-items:stretch; gap:0; min-width:860px; }
+  .stage {
+    flex:1; background:var(--surface); border:1px solid var(--line);
+    border-radius:11px; padding:16px 15px; position:relative;
+  }
+  .stage + .stage { margin-left:26px; }
+  .stage::after {
+    content:"→"; position:absolute; right:-21px; top:50%; transform:translateY(-50%);
+    font-family:var(--mono); color:var(--ink-faint); font-size:16px; z-index:2;
+  }
+  .stage:last-child::after { content:""; }
+  .stage .k { font-family:var(--mono); font-size:11px; color:var(--known);
+    letter-spacing:.08em; }
+  .stage h4 { margin:7px 0 6px; font-size:14.5px; font-weight:660; color:var(--ink); line-height:1.25; }
+  .stage p { margin:0; font-size:12.5px; color:var(--ink-soft); line-height:1.45; }
+  .stage .file { font-family:var(--mono); font-size:11px; color:var(--ink-faint); margin-top:9px; display:block; }
+  .stage.out { border-color:var(--future); }
+  .stage.out .k { color:var(--future); }
+
+  /* ---- data tables (stat-sheet) ---- */
+  table.data { border-collapse:collapse; font-family:var(--mono); font-size:12.5px;
+    min-width:max-content; font-variant-numeric:tabular-nums; }
+  table.data th, table.data td { padding:7px 13px; text-align:right; white-space:nowrap;
+    border-bottom:1px solid var(--line-soft); }
+  table.data th {
+    font-weight:600; color:var(--ink-faint); text-align:right;
+    font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+    border-bottom:1px solid var(--line);
+  }
+  table.data td.txt, table.data th.txt { text-align:left; }
+  table.data td { color:var(--ink-soft); }
+  table.data td.hi { color:var(--known); font-weight:600; }
+  table.data td.fut { color:var(--future); font-weight:600; }
+  .cap { font-size:13px; color:var(--ink-faint); margin:8px 2px 0; font-style:italic; }
+
+  /* ---- the shift diagram ---- */
+  .shift { display:grid; gap:20px; margin:8px 0; min-width:640px; }
+  .shift .row-lbl { font-family:var(--mono); font-size:12px; color:var(--ink-faint);
+    margin-bottom:8px; letter-spacing:.04em; }
+  .cells { display:flex; gap:10px; }
+  .cell {
+    font-family:var(--mono); font-size:13px; border:1px solid var(--line);
+    border-radius:8px; padding:10px 14px; background:var(--surface); min-width:104px;
+    text-align:center; font-variant-numeric:tabular-nums;
+  }
+  .cell .yr { color:var(--ink-faint); font-size:11px; display:block; margin-bottom:3px; }
+  .cell .val { color:var(--ink); font-size:15px; font-weight:600; }
+  .cell.known { border-color:var(--known); background:var(--known-soft); }
+  .cell.known .val { color:var(--known); }
+  .cell.fut { border-color:var(--future); background:var(--future-soft); }
+  .cell.fut .val { color:var(--future); }
+  .cell.ghost { opacity:.4; border-style:dashed; }
+  .shift-note { font-size:14px; color:var(--ink-soft); margin:14px 0 0; }
+
+  /* ---- venv split ---- */
+  .venv { display:grid; grid-template-columns:1fr auto 1fr; gap:0; align-items:center; min-width:720px; }
+  .env { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:20px 22px; }
+  .env .tag { font-family:var(--mono); font-size:11.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-faint); }
+  .env h4 { margin:8px 0 6px; font-size:16px; color:var(--ink); font-weight:680; }
+  .env .py { font-family:var(--mono); font-size:12.5px; color:var(--known); }
+  .env ul { margin:12px 0 0; padding-left:18px; }
+  .env li { font-size:13px; color:var(--ink-soft); margin:4px 0; }
+  .contract {
+    text-align:center; padding:0 20px; position:relative;
+  }
+  .contract .pq {
+    font-family:var(--mono); font-size:12px; color:var(--future);
+    border:1px dashed var(--future); border-radius:8px; padding:12px 10px;
+    background:var(--future-soft); writing-mode:horizontal-tb; line-height:1.4;
+  }
+  .contract .arrow { font-family:var(--mono); color:var(--ink-faint); font-size:15px; margin:8px 0; }
+
+  /* ---- backtest timeline ---- */
+  .bt { display:grid; gap:22px; min-width:680px; }
+  .btrow { display:grid; grid-template-columns:120px 1fr; gap:16px; align-items:center; }
+  .btrow .name { font-family:var(--mono); font-size:12.5px; color:var(--ink); }
+  .btrow .name span { color:var(--ink-faint); display:block; font-size:11px; margin-top:2px; }
+  .years { display:flex; gap:6px; }
+  .yr-box {
+    flex:1; font-family:var(--mono); font-size:12px; text-align:center;
+    padding:9px 4px; border-radius:7px; border:1px solid var(--line);
+    background:var(--surface); color:var(--ink-faint); font-variant-numeric:tabular-nums;
+  }
+  .yr-box.train { background:var(--known-soft); border-color:var(--known); color:var(--known); font-weight:600; }
+  .yr-box.test { background:var(--future-soft); border-color:var(--future); color:var(--future); font-weight:600; }
+  .yr-box.none { opacity:.45; }
+  .legend { display:flex; gap:20px; flex-wrap:wrap; margin-top:8px; font-family:var(--mono); font-size:12px; color:var(--ink-soft); }
+  .chip { display:inline-flex; align-items:center; gap:7px; }
+  .sw { width:13px; height:13px; border-radius:3px; border:1px solid var(--line); display:inline-block; }
+  .sw.train { background:var(--known-soft); border-color:var(--known); }
+  .sw.test { background:var(--future-soft); border-color:var(--future); }
+
+  /* ---- model contract / socket ---- */
+  .socket { display:grid; grid-template-columns:1fr; gap:14px; min-width:520px; }
+  .plug { display:grid; grid-template-columns:150px 1fr; gap:14px; align-items:center; }
+  .plug .m { font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--surface);
+    border:1px solid var(--line); border-radius:8px; padding:9px 13px; }
+  .plug.tabfm .m { border-color:var(--known); color:var(--known); }
+  .plug .desc { font-size:13.5px; color:var(--ink-soft); }
+  .sig { font-family:var(--mono); font-size:13px; color:var(--future); background:var(--future-soft);
+    border:1px dashed var(--future); border-radius:8px; padding:11px 15px; text-align:center; margin-bottom:4px; }
+
+  /* ---- results ---- */
+  table.res { border-collapse:collapse; font-family:var(--mono); font-size:13px; width:100%;
+    min-width:520px; font-variant-numeric:tabular-nums; }
+  table.res th, table.res td { padding:9px 14px; border-bottom:1px solid var(--line-soft); text-align:right; }
+  table.res th { color:var(--ink-faint); font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+    border-bottom:1px solid var(--line); }
+  table.res td.txt, table.res th.txt { text-align:left; color:var(--ink); }
+  table.res tr.bar td.txt { color:var(--ink-faint); }
+  table.res td { color:var(--ink-soft); }
+  .tag-il { font-family:var(--mono); font-size:11px; color:var(--danger); border:1px solid var(--danger);
+    border-radius:5px; padding:2px 8px; }
+
+  /* ---- file map ---- */
+  .files { display:grid; gap:2px; margin:20px 0; font-family:var(--mono); font-size:13.5px; }
+  .frow { display:grid; grid-template-columns:280px 1fr; gap:16px; padding:11px 14px;
+    border-radius:8px; align-items:baseline; }
+  .frow:nth-child(odd) { background:var(--surface); }
+  .frow .fn { color:var(--known); white-space:nowrap; }
+  .frow .fn.done::after { content:" ✓"; color:var(--good); }
+  .frow .fd { color:var(--ink-soft); font-family:var(--sans); font-size:14px; }
+  .frow .fd b { color:var(--ink); font-weight:600; }
+
+  footer { padding:44px 0 70px; color:var(--ink-faint); font-size:13.5px; }
+  footer .mono { font-family:var(--mono); font-size:12.5px; }
+
+  @media (max-width:640px) {
+    body { font-size:16px; }
+    .venv { grid-template-columns:1fr; gap:14px; }
+    .contract { padding:6px 0; }
+    .plug, .btrow { grid-template-columns:1fr; gap:8px; }
+  }
+  @media (prefers-reduced-motion:no-preference) {
+    .stage, .cell, .yr-box { animation:rise .5s cubic-bezier(.2,.7,.3,1) both; }
+    .rail .stage:nth-child(2){animation-delay:.05s} .rail .stage:nth-child(3){animation-delay:.1s}
+    .rail .stage:nth-child(4){animation-delay:.15s} .rail .stage:nth-child(5){animation-delay:.2s}
+    .rail .stage:nth-child(6){animation-delay:.25s}
+    @keyframes rise { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <p class="eyebrow">TabFM Research · Architecture Reference</p>
+    <h1>Predicting next season <span class="fade">from what we knew at the end of this one.</span></h1>
+    <p class="lede">How the standalone TabFM analysis is built — six stages that turn raw
+      weekly box scores into an honest, leak-free forecast, and the harness that scores it.</p>
+    <div class="meta">
+      <span>Branch <b>tabfm-research</b></span>
+      <span>Rows <b>3,726</b> transitions</span>
+      <span>Window <b>2016–2024</b> → t+1</span>
+      <span>Target <b>next-season PPG</b></span>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap prose">
+    <p class="snum">01 · THE ONE IDEA</p>
+    <h2>Two seasons, side by side</h2>
+    <p>Every row in this project is a single player at one <strong>transition</strong>:
+      everything we knew about them at the end of <strong style="color:var(--known)">season&nbsp;t</strong>,
+      paired with what they actually did in <strong style="color:var(--future)">season&nbsp;t+1</strong>.
+      The model reads the left half and predicts the right half. Nothing from the future is ever
+      allowed to leak into the features — that single rule shapes the entire pipeline.</p>
+    <p>The colour code runs through this whole page: <strong style="color:var(--known)">amber is
+      the known present</strong> (features, the model), <strong style="color:var(--future)">slate is
+      the future</strong> (the target we're trying to hit).</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <p class="snum">02 · THE PIPELINE</p>
+      <h2>Six stages, raw data to forecast</h2>
+      <p>Each stage is one transformation with one job. Data only ever flows left to right;
+        every stage is a plain function you can run and inspect on its own.</p>
+    </div>
+    <div class="scroll">
+      <div class="rail">
+        <div class="stage">
+          <span class="k">STAGE 1</span>
+          <h4>Raw weekly scores</h4>
+          <p>Every player's fantasy points, week by week.</p>
+          <span class="file">performance_weekly.csv</span>
+        </div>
+        <div class="stage">
+          <span class="k">STAGE 2</span>
+          <h4>Consistency features</h4>
+          <p>Collapse 13 weeks → volatility, boom/bust, downside risk.</p>
+          <span class="file">consistency_features()</span>
+        </div>
+        <div class="stage">
+          <span class="k">STAGE 3</span>
+          <h4>Season table</h4>
+          <p>Join box score + consistency + advanced per player-season.</p>
+          <span class="file">assemble_season_table()</span>
+        </div>
+        <div class="stage">
+          <span class="k">STAGE 4</span>
+          <h4>Transitions</h4>
+          <p>Self-join: season t features beside t+1 outcome.</p>
+          <span class="file">build_transitions()</span>
+        </div>
+        <div class="stage">
+          <span class="k">STAGE 5</span>
+          <h4>Feature matrix</h4>
+          <p>Select tiers, one-hot position → numeric X, y.</p>
+          <span class="file">feature_matrix()</span>
+        </div>
+        <div class="stage out">
+          <span class="k">STAGE 6</span>
+          <h4>Predict &amp; score</h4>
+          <p>Backtest each model → MAE, R², Spearman.</p>
+          <span class="file">baselines.py</span>
+        </div>
+      </div>
+    </div>
+    <div class="prose">
+      <p>Stages 1–4 run in the <strong>project venv</strong> (Python 3.9) and end at a Parquet file.
+        Stages 5–6 run in the <strong>TabFM venv</strong> (Python 3.11). Why the split matters is the
+        next section — but notice the seam already: the Parquet is the handoff.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <p class="snum">03 · STAGE 2 IN DETAIL</p>
+      <h2>13 weeks become 6 numbers</h2>
+      <p>A season total hides <em>how</em> a player got there. Two receivers can both average
+        22&nbsp;PPG — one metronomic, one all booms and busts. Stage&nbsp;2 groups each player's
+        weekly scores and measures the shape of the distribution.</p>
+    </div>
+    <div class="scroll">
+      <table class="data">
+        <thead><tr>
+          <th class="txt">player</th><th>season</th><th>week</th><th>points</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="txt">Justin Jefferson</td><td>2024</td><td>1</td><td>18.04</td></tr>
+          <tr><td class="txt">Justin Jefferson</td><td>2024</td><td>2</td><td class="hi">34.43</td></tr>
+          <tr><td class="txt">Justin Jefferson</td><td>2024</td><td>3</td><td>23.84</td></tr>
+          <tr><td class="txt">Justin Jefferson</td><td>2024</td><td>4</td><td>24.76</td></tr>
+          <tr><td class="txt">Justin Jefferson</td><td>2024</td><td>5</td><td>9.59</td></tr>
+          <tr><td class="txt" style="color:var(--ink-faint)">… 8 more weeks</td><td>2024</td><td>…</td><td>…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cap">Stage 1 — raw input: one row per player per week.</p>
+    <div class="scroll" style="margin-top:8px">
+      <table class="data">
+        <thead><tr>
+          <th class="txt">player · season</th><th>weekly_std</th><th>weekly_cv</th>
+          <th>downside_dev</th><th>boom_weeks</th><th>bust_weeks</th><th>n_weeks</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="txt">Jefferson · 2024</td>
+            <td class="hi">11.33</td><td>0.60</td><td>12.14</td><td>0.54</td><td>0.15</td><td>13</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cap">Stage 2 — output: the 13 rows above become one. <span class="mono">boom_weeks 0.54</span>
+      = 54% of weeks ≥ 20 pts; <span class="mono">bust_weeks 0.15</span> = 15% under 5.</p>
+    <div class="callout future">
+      <span class="lbl">Design decision · the missingness flag</span>
+      Weekly data only exists from 2022, and only for rostered players — so ~half of rows have no
+      consistency at all. Instead of dropping the feature, a <span class="mono">consistency_missing</span>
+      flag marks those rows, so the model can learn that <em>not knowing</em> is itself informative
+      rather than reading an imputed average as real.
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <p class="snum">04 · STAGE 4 · THE HEART</p>
+      <h2>The self-join that makes a forecast</h2>
+      <p>This is the conceptual centre of the whole project. To build "features now → outcome next
+        year," you take the season table and join it to a <strong>copy of itself shifted back one
+        year</strong>. Watch Jefferson's real numbers line up:</p>
+    </div>
+    <div class="scroll">
+      <div class="shift">
+        <div>
+          <div class="row-lbl">season_table — one row per player-season (his PPG each year)</div>
+          <div class="cells">
+            <div class="cell known"><span class="yr">2022</span><span class="val">25.90</span></div>
+            <div class="cell known"><span class="yr">2023</span><span class="val">24.49</span></div>
+            <div class="cell known"><span class="yr">2024</span><span class="val">21.94</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="row-lbl">outcomes — same PPG, but season label shifted <b>−1</b> so t+1 lines up under t</div>
+          <div class="cells">
+            <div class="cell ghost"><span class="yr">2021</span><span class="val">25.90</span></div>
+            <div class="cell fut"><span class="yr">2022</span><span class="val">24.49</span></div>
+            <div class="cell fut"><span class="yr">2023</span><span class="val">21.94</span></div>
+            <div class="cell ghost"><span class="yr">2024</span><span class="val">11.10</span></div>
+          </div>
+        </div>
+        <p class="shift-note">Merge on <span class="mono">(espn_id, season)</span> → the
+          <span style="color:var(--known)">2022 feature row</span> now sits beside its
+          <span style="color:var(--future)">target 24.49</span> (his actual 2023 PPG, the injury year).
+          An <span class="mono">inner</span> join drops the un-matched ghost cells for free — that's
+          the rookie &amp; retirement filter, no special-case code.</p>
+      </div>
+    </div>
+    <div class="scroll">
+      <table class="data">
+        <thead><tr>
+          <th class="txt">the resulting transition row</th><th>age</th><th>ppg</th><th>receptions</th>
+          <th>weekly_std</th><th>snap_pct</th><th>target_ppg</th><th>target_games</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="txt">Jefferson · 2022 → 2023</td>
+            <td>23</td><td class="hi">25.90</td><td class="hi">128</td><td class="hi">18.90</td><td class="hi">0.96</td>
+            <td class="fut">24.49</td><td class="fut">10</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cap"><span style="color:var(--known)">Amber = season-t features</span> (what the model reads) ·
+      <span style="color:var(--future)">slate = the t+1 target</span> (what it predicts). Everything
+      future-facing is prefixed <span class="mono">target_</span>.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <p class="snum">05 · WHY TWO ENVIRONMENTS</p>
+      <h2>A Parquet file is the border crossing</h2>
+      <p>TabFM needs Python 3.11. The project's data code needs Python 3.9 (an old pandas the
+        nflverse library pins). Those can't coexist — so the pipeline is deliberately split across
+        two isolated environments, and a single Parquet file is the contract between them.</p>
+    </div>
+    <div class="scroll">
+      <div class="venv">
+        <div class="env">
+          <span class="tag">Builds the data</span>
+          <h4>Project venv</h4>
+          <span class="py">python 3.9 · pandas &lt; 2</span>
+          <ul>
+            <li>Pulls nflverse box scores</li>
+            <li>Runs stages 1–4</li>
+            <li>Writes the Parquet</li>
+          </ul>
+        </div>
+        <div class="contract">
+          <div class="arrow">writes ↓</div>
+          <div class="pq">tabfm_transitions<br>.parquet<br><span style="color:var(--ink-faint)">3,726 × 36</span></div>
+          <div class="arrow">↓ reads</div>
+        </div>
+        <div class="env">
+          <span class="tag">Runs the models</span>
+          <h4>TabFM venv</h4>
+          <span class="py">python 3.11 · pandas 3</span>
+          <ul>
+            <li>Reads the Parquet</li>
+            <li>Runs stages 5–6</li>
+            <li>Baselines + TabFM</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="callout">
+      <span class="lbl">Real gotcha, already hit</span>
+      Parquet needs an engine on <em>both</em> sides of the border. The project venv had
+      <span class="mono">pyarrow</span>; the TabFM venv didn't, so its first read failed until it was
+      installed there too. The handoff format is only free if both ends can speak it.
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <p class="snum">06 · THE HONEST TEST</p>
+      <h2>Rolling-origin backtests</h2>
+      <p>You can't judge a forecaster by shuffling rows at random — that scatters 2024 outcomes into
+        the training data used to predict 2023, leaking the future. Instead we stand at a point in
+        time, train only on what existed before it, and predict forward. Two such tests:</p>
+    </div>
+    <div class="scroll">
+      <div class="bt">
+        <div class="btrow">
+          <div class="name">Backtest A<span>predict 2024</span></div>
+          <div class="years">
+            <div class="yr-box train">≤2021</div>
+            <div class="yr-box train">2022</div>
+            <div class="yr-box train">2023</div>
+            <div class="yr-box test">→ 2024</div>
+            <div class="yr-box none">2025</div>
+          </div>
+        </div>
+        <div class="btrow">
+          <div class="name">Backtest B<span>predict 2025</span></div>
+          <div class="years">
+            <div class="yr-box train">≤2021</div>
+            <div class="yr-box train">2022</div>
+            <div class="yr-box train">2023</div>
+            <div class="yr-box train">2024</div>
+            <div class="yr-box test">→ 2025</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="legend">
+      <span class="chip"><span class="sw train"></span> training context (season t ≤ cutoff)</span>
+      <span class="chip"><span class="sw test"></span> held-out season we predict</span>
+    </div>
+    <div class="prose"><p style="margin-top:26px">The splitter is one line —
+      <span class="mono">train = pairs[pairs.season &lt; test_season]</span> — but that
+      <span class="mono">&lt;</span> is the whole difference between an honest backtest and a
+      fantasy of one.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <p class="snum">07 · THE MODEL CONTRACT</p>
+      <h2>One socket, five plugs</h2>
+      <p>Every model — the four baselines and TabFM — is just a function with the same shape.
+        That uniformity is why baselines come first: the harness gets debugged on cheap, instant
+        models, and TabFM later drops into the identical socket with no special-casing.</p>
+    </div>
+    <div class="scroll">
+      <div class="socket">
+        <div class="sig">model(train_df, test_df) → predictions</div>
+        <div class="plug"><div class="m">persistence</div><div class="desc">returns each player's own season-t PPG. The bar to beat.</div></div>
+        <div class="plug"><div class="m">position_mean</div><div class="desc">shrinks toward the positional average — regression to the mean.</div></div>
+        <div class="plug"><div class="m">ridge</div><div class="desc">linear yardstick. Impute → scale → linear fit.</div></div>
+        <div class="plug"><div class="m">histgbr</div><div class="desc">gradient-boosted trees. NaN-native classical-ML yardstick.</div></div>
+        <div class="plug tabfm"><div class="m">tabfm</div><div class="desc">the foundation model — Phase 3, same signature.</div></div>
+      </div>
+    </div>
+    <div class="callout future">
+      <span class="lbl">The ablation, built into the socket</span>
+      <span class="mono">feature_matrix()</span> can switch whole feature bundles on or off —
+      core / consistency / advanced. Running each model with and without a bundle <em>measures</em>
+      what that bundle is worth, instead of assuming. That's how the advanced stats earn (or lose)
+      their place in Phase 3.
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <p class="snum">08 · WHAT RESULTS LOOK LIKE</p>
+      <h2>The scoreboard</h2>
+      <p>Stage 6 prints one row per model per backtest. Four numbers, because no single one is enough:
+        <strong>MAE</strong> (points off), <strong>R²</strong> (variance explained),
+        <strong>Spearman</strong> (did we rank players right — what your league decisions actually
+        need), and <strong>calibration slope</strong> (are elite predictions compressed toward the
+        mean?).</p>
+    </div>
+    <div class="scroll">
+      <table class="res">
+        <thead><tr>
+          <th class="txt">model · predict 2024</th><th>MAE</th><th>R²</th><th>Spearman</th><th>slope</th>
+        </tr></thead>
+        <tbody>
+          <tr class="bar"><td class="txt">persistence &nbsp;<span style="font-size:11px">— the bar</span></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td class="txt">position_mean</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td class="txt">ridge</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td class="txt">histgbr</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cap"><span class="tag-il">you fill this in</span> &nbsp; The numbers are blank because the
+      metric &amp; persistence functions are your Phase-2 TODOs. The <em>shape</em> of the answer is
+      already here — and the question to watch is: <strong>does anything actually beat persistence,
+      and is the gap real</strong> (the bootstrap decides)?</p>
+    <div class="prose">
+      <p style="margin-top:24px">Expect this to be humbling. In fantasy, "next year = this year" is a
+        genuinely strong forecaster, because last season's PPG already encodes talent, role and
+        offence. If Ridge and HistGBR barely edge it, that's a real finding — and exactly the context
+        you need before judging whether TabFM's 13&nbsp;GB earns its keep.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <p class="snum">09 · WHERE EVERYTHING LIVES</p>
+      <h2>The file map</h2>
+    </div>
+    <div class="files">
+      <div class="frow"><span class="fn done">build_dataset.py</span><span class="fd">Stages 1–4. Loaders, the self-join, leakage checks, the data dictionary. <b>Runs in the project venv.</b></span></div>
+      <div class="frow"><span class="fn">evaluate.py</span><span class="fd">The shared harness: <b>metrics</b>, the <b>backtest splitter</b>, <span class="mono">feature_matrix()</span>, the paired bootstrap.</span></div>
+      <div class="frow"><span class="fn">baselines.py</span><span class="fd">The four models + the runner that prints the scoreboard. <b>Runs in the TabFM venv.</b></span></div>
+      <div class="frow"><span class="fn">_weights.py</span><span class="fd">Loads the TabFM network, working around the safetensors format skew.</span></div>
+      <div class="frow"><span class="fn">run_tabfm.py</span><span class="fd">Phase 3 — TabFM through the same harness, plus the ablations.</span></div>
+      <div class="frow"><span class="fn">tabfm_transitions.parquet</span><span class="fd">The data contract. 3,726 × 36. Git-ignored; rebuilt on demand.</span></div>
+    </div>
+    <div class="prose">
+      <p style="margin-top:8px">Learning docs sit alongside in <span class="mono">docs/research/tabfm/</span> —
+        the curriculum (00), how TabFM works (01), design rationale (02), and the glossary (05).</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p class="mono">tabfm-research · architecture reference · Phase 2 in progress</p>
+    <p>Amber = season t (known / model) · Slate = season t+1 (the future / target). Built from real
+      pipeline data — Justin Jefferson's transitions, 3,726 rows, 2016–2024.</p>
+  </div>
+</footer>
+</body>
+</html>

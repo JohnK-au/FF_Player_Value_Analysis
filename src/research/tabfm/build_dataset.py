@@ -41,10 +41,6 @@ _ROOT = Path(__file__).resolve().parents[3]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-if sys.version_info >= (3, 10):  # the TabFM venv is 3.11; this file needs 3.9
-    print("WARNING: you look to be in the wrong venv -- use .venv/bin/python "
-          "(project, py3.9) for Phase 1, not .venv-tabfm.\n", file=sys.stderr)
-
 PROCESSED = _ROOT / "data" / "processed"
 OUT_PARQUET = PROCESSED / "research" / "tabfm_transitions.parquet"
 OUT_DICT = _ROOT / "docs" / "research" / "tabfm" / "data_dictionary.md"
@@ -404,6 +400,11 @@ def main() -> None:
     ap.add_argument("--spot", metavar="NAME",
                     help="after building, print this player's transition rows")
     args = ap.parse_args()
+
+    if sys.version_info >= (3, 10):  # this script needs the project venv (py3.9)
+        print("WARNING: wrong venv -- run this with .venv/bin/python (project, "
+              "py3.9), not .venv-tabfm. Phase-1 build touches src/data/ "
+              "(pandas<2).\n", file=sys.stderr)
 
     if args.check_inputs:
         frame = load_season_frame()

@@ -150,4 +150,73 @@ def run_leakage_checks(transitions: pd.DataFrame,
 
 ---
 
-*(Phase 2+ solutions are appended when those scaffolds exist.)*
+## Phase 2 — `evaluate.py` + `baselines.py`
+
+### TODO(you) 2.1 — the four metric functions
+
+```python
+from sklearn.metrics import mean_absolute_error, r2_score
+from scipy.stats import spearmanr
+
+def mae(y_true, y_pred) -> float:
+    return mean_absolute_error(y_true, y_pred)
+
+def r2(y_true, y_pred) -> float:
+    return r2_score(y_true, y_pred)
+
+def spearman(y_true, y_pred) -> float:
+    return spearmanr(y_true, y_pred).statistic
+
+def calibration_slope(y_true, y_pred) -> float:
+    # slope of ACTUAL regressed on PREDICTED; 1.0 = calibrated
+    return float(np.polyfit(y_pred, y_true, 1)[0])
+```
+
+**Why each exists:**
+- `mae` — average miss in PPG. The number you can say out loud ("off by ~2.4").
+- `r2` — variance explained; comparable across datasets, but rewards spreading
+  predictions out, so never read it alone.
+- `spearman` — did we get the *ranking* right? Your draft/auction decisions are
+  orderings, so this is arguably the metric that matters most commercially.
+- `calibration_slope` — regress actual on predicted; `<1` means predictions are
+  compressed toward the mean (elites under-called, scrubs over-called). A model
+  can win on R² and still be dangerous here — that's why we track it.
+- Note the argument order in `np.polyfit(y_pred, y_true, 1)`: x first, then y.
+  Calibration regresses actual **on** predicted, so predicted is x.
+
+### TODO(you) 2.2 — the rolling-origin splitter
+
+```python
+def backtest_split(pairs, test_season):
+    train = pairs[pairs["season"] < test_season]
+    test  = pairs[pairs["season"] == test_season]
+    return train, test
+```
+
+**Why it looks like this:**
+- `season` is season *t* of the pair, so `season == 2023` is the "predict 2024"
+  test set, and everything with `season < 2023` is legal training context.
+- **Strictly less-than is the whole point.** A random K-fold would scatter 2024
+  transitions into the training set used to predict 2023 — leaking the future.
+  Time-ordered data demands time-ordered splits. This one line is the difference
+  between an honest backtest and a fantasy of one.
+
+### TODO(you) 2.3 — the persistence baseline
+
+```python
+def persistence(train, test) -> np.ndarray:
+    return test["ppg"].to_numpy()
+```
+
+**Why it looks like this:**
+- Ignores `train` entirely — there's nothing to learn. It predicts next year's
+  PPG = this year's PPG.
+- It is *the bar*. In fantasy, last season's PPG already bakes in talent, role,
+  and offense, so persistence is a genuinely strong opponent. If a model can't
+  beat it — after training, tuning, and 13 GB of weights — that model has
+  learned nothing you couldn't get for free. Publishing this number *before*
+  running TabFM is how you stop yourself moving the goalposts later.
+
+---
+
+*(Phase 3+ solutions are appended when those scaffolds exist.)*
