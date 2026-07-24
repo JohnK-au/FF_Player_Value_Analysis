@@ -26,9 +26,12 @@ USAGE
 """
 from __future__ import annotations
 
+from functools import lru_cache
+
 _HF_REPO_ID = "google/tabfm-1.0.0-pytorch"
 
 
+@lru_cache(maxsize=2)  # load each model_type once per process (~10s + 13 GB)
 def load_core(model_type: str = "regression"):
     """Return the pretrained TabFM torch module for ``model_type``.
 

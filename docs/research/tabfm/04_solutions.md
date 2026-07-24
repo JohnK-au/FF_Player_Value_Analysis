@@ -219,4 +219,31 @@ def persistence(train, test) -> np.ndarray:
 
 ---
 
-*(Phase 3+ solutions are appended when those scaffolds exist.)*
+## Phase 3 — `run_tabfm.py`
+
+### TODO(you) 3.1 — the TabFM prediction core
+
+```python
+from tabfm import TabFMRegressor
+
+def tabfm_predict(core, X_tr, y_tr, X_te, seed: int = 0) -> np.ndarray:
+    reg = TabFMRegressor(model=core, random_state=seed)
+    reg.fit(X_tr, y_tr)          # instant: stores the context
+    return reg.predict(X_te)     # the slow forward pass
+```
+
+**Why it looks like this:**
+- It's `smoke_test.py` again — the only new thing is that `core` is passed in
+  (loaded once and cached upstream) instead of loaded here, so the ablation's
+  many runs don't reload 13 GB each time.
+- `random_state=seed` is why the runner can average two seeds: TabFM's ensemble
+  views shuffle differently per seed, so predictions wobble slightly. Averaging
+  a couple of seeds is standard practice for ICL models, and reporting the
+  spread tells you whether a win is bigger than the noise.
+- `fit` stores; `predict` computes. If you feel the wait, that *is* the
+  in-context learning happening — the whole training context flows through the
+  network at predict time.
+
+---
+
+*(Phase 4 solutions appended when that scaffold exists.)*
