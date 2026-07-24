@@ -218,6 +218,7 @@
     border-bottom:1px solid var(--line); }
   table.res td.txt, table.res th.txt { text-align:left; color:var(--ink); }
   table.res tr.bar td.txt { color:var(--ink-faint); }
+  table.res tr.win td { color:var(--known); font-weight:650; }
   table.res td { color:var(--ink-soft); }
   .tag-il { font-family:var(--mono); font-size:11px; color:var(--danger); border:1px solid var(--danger);
     border-radius:5px; padding:2px 8px; }
@@ -581,22 +582,27 @@
           <th class="txt">model · predict 2024</th><th>MAE</th><th>R²</th><th>Spearman</th><th>slope</th>
         </tr></thead>
         <tbody>
-          <tr class="bar"><td class="txt">persistence &nbsp;<span style="font-size:11px">— the bar</span></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-          <tr><td class="txt">position_mean</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-          <tr><td class="txt">ridge</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-          <tr><td class="txt">histgbr</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr class="bar"><td class="txt">persistence &nbsp;<span style="font-size:11px">— the bar</span></td><td>4.33</td><td>0.26</td><td>0.61</td><td>0.64</td></tr>
+          <tr><td class="txt">position_mean</td><td>4.05</td><td>0.38</td><td>0.60</td><td>1.18</td></tr>
+          <tr class="win"><td class="txt">ridge &nbsp;<span style="font-size:11px">← best</span></td><td>3.83</td><td>0.46</td><td>0.66</td><td>0.98</td></tr>
+          <tr><td class="txt">histgbr</td><td>4.07</td><td>0.34</td><td>0.62</td><td>0.77</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="cap"><span class="tag-il">you fill this in</span> &nbsp; The numbers are blank because the
-      metric &amp; persistence functions are your Phase-2 TODOs. The <em>shape</em> of the answer is
-      already here — and the question to watch is: <strong>does anything actually beat persistence,
-      and is the gap real</strong> (the bootstrap decides)?</p>
+    <p class="cap">Real numbers, backtest A (predict 2024, 283 players). Ridge wins; its edge over
+      persistence is bootstrap-confirmed real — <span class="mono">MAE-delta 95% CI [−0.86, −0.17]</span>,
+      entirely below zero. Backtest B (predict 2025) is stronger still: Ridge MAE 3.11, R² 0.54.</p>
     <div class="prose">
-      <p style="margin-top:24px">Expect this to be humbling. In fantasy, "next year = this year" is a
-        genuinely strong forecaster, because last season's PPG already encodes talent, role and
-        offence. If Ridge and HistGBR barely edge it, that's a real finding — and exactly the context
-        you need before judging whether TabFM's 13&nbsp;GB earns its keep.</p>
+      <p style="margin-top:24px">Two things stand out. <strong>Everything beats persistence, and the gap
+        is real</strong> — but nobody is <em>great</em>: best MAE is ~3–4 PPG, best R² ~0.5. Half of
+        next season is genuinely unpredictable from prior stats, and that's the honest ceiling.</p>
+      <p>The <strong>calibration slopes bracket the sweet spot</strong>: persistence 0.64 (too
+        extreme — it ignores that elite seasons regress), position_mean 1.18 (too timid — it
+        over-shrinks to the average), Ridge 0.98 (just right). The right amount of regression to the
+        mean, learned.</p>
+      <p>And the model to beat is <strong>a plain linear regression</strong> — which hints the signal
+        here is largely linear, setting a genuinely high bar for whether TabFM's 13&nbsp;GB earns its
+        keep in Phase 3.</p>
     </div>
   </div>
 </section>

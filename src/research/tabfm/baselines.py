@@ -49,7 +49,7 @@ MIN_TARGET_GAMES = 4  # survivorship filter on the OUTCOME (decided; disclosed)
 # Stuck after a real attempt? -> 04_solutions.md (2.3)
 # =========================================================================
 def persistence(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:
-    raise NotImplementedError("TODO(you) 2.3")
+    return test["ppg"].to_numpy()
 
 
 def position_mean(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:
