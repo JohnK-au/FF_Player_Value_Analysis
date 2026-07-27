@@ -246,4 +246,36 @@ def tabfm_predict(core, X_tr, y_tr, X_te, seed: int = 0) -> np.ndarray:
 
 ---
 
-*(Phase 4 solutions appended when that scaffold exists.)*
+## Phase 4 — `experiments.py`
+
+### TODO(you) 4.1 — the stratified ablation
+
+```python
+def stratified_ablation(test, pred_full, pred_nocon, threshold) -> dict:
+    hi = test["ppg"] >= threshold          # boolean mask, one per test player
+    lo = ~hi                               # the complement
+    y = test["target_ppg"]
+    return {
+        "high_full":  ev.mae(y[hi], pred_full[hi]),
+        "high_nocon": ev.mae(y[hi], pred_nocon[hi]),
+        "low_full":   ev.mae(y[lo], pred_full[lo]),
+        "low_nocon":  ev.mae(y[lo], pred_nocon[lo]),
+    }
+```
+
+**Why it looks like this:**
+- `test["ppg"] >= threshold` is a boolean Series; `~hi` flips it. The same mask
+  indexes both the truth (`y[hi]`) and the numpy prediction arrays
+  (`pred_full[hi]`) because the test index was reset to 0..n, so position and
+  label line up.
+- Four MAEs = 2 groups × 2 configs. The comparison that matters is *within* a
+  group: `high_nocon − high_full`. Positive means removing consistency made
+  elites worse, i.e. consistency was helping them.
+- This is the honest way to chase a subgroup effect the average hid — but note
+  the multiple-comparisons trap: split enough ways and something looks
+  significant by chance. Treat a one-group blip as a hypothesis, not a result,
+  unless it holds across *both* backtests.
+
+---
+
+*(Later Phase 4 solutions appended as those scaffolds land.)*
