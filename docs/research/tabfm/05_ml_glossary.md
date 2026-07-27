@@ -23,6 +23,20 @@ t+1).
 season's PPG: 14.7); classification predicts a *category* (will this player
 be a top-12 WR: yes/no). We're doing regression.
 
+**Harness** (evaluation / test harness) — the scaffolding that runs each model
+under identical conditions and measures it, so the model is the only thing that
+varies.
+
+> **Analogy:** an engine dynamometer. Bolt any engine into the same rig — same
+> fuel, same load, same instruments — and different horsepower numbers must come
+> from the engine, not the test. `evaluate.py` is our rig (same features, same
+> train/test split, same metrics); each model plugs into the same
+> `(train_df, test_df) → predictions` socket.
+
+*Why it matters here:* it's why baselines came before TabFM — get the rig
+trustworthy on cheap, fast models, then the expensive model drops in and its
+number is directly comparable.
+
 **Model** — a function from features to a target, whose specifics are learned
 from data rather than written by hand.
 

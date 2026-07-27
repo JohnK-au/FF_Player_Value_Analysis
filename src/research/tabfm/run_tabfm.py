@@ -17,6 +17,8 @@ READ FIRST
 """
 from __future__ import annotations
 
+from tabfm import TabFMRegressor
+
 import sys
 from pathlib import Path
 
@@ -55,7 +57,9 @@ ABLATIONS = {                        # feature bundles toggled via feature_matri
 # Stuck after a real attempt? -> 04_solutions.md (3.1)
 # =========================================================================
 def tabfm_predict(core, X_tr, y_tr, X_te, seed: int = 0) -> np.ndarray:
-    raise NotImplementedError("TODO(you) 3.1 -- see smoke_test.py")
+    reg = TabFMRegressor(model=core, random_state=seed)
+    reg.fit(X_tr, y_tr)
+    return reg.predict(X_te)
 
 
 # ------------------------------------------------------------ model wrapper
