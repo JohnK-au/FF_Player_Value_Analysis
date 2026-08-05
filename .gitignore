@@ -8,6 +8,7 @@ dist/
 
 # Virtual environments
 .venv/
+.venv-tabfm/
 venv/
 env/
 .python-version
@@ -28,6 +29,8 @@ data/raw/
 *.csv
 *.xlsx
 *.parquet
+# cached model predictions (e.g. TabFM) -- derived, regenerable
+*.npy
 
 # Allowlist: subjective-override files are user-edited and must persist across sessions
 !data/research/intangibles_overrides.csv
@@ -54,3 +57,6 @@ TODOs.md
 .vscode/
 streamlit_log.txt
 streamlit_err.txt
+
+# TabFM scratch "current step" panel (kept open in a side tab, not docs)
+docs/research/tabfm/_now.md
