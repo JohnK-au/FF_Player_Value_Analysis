@@ -276,6 +276,41 @@ def stratified_ablation(test, pred_full, pred_nocon, threshold) -> dict:
   significant by chance. Treat a one-group blip as a hypothesis, not a result,
   unless it holds across *both* backtests.
 
+### TODO(you) 4.2 — residualize weekly_std on ppg (leak-free)
+
+```python
+def add_std_residual(train, test):
+    train, test = train.copy(), test.copy()
+    m = train["weekly_std"].notna()                       # fit only where present
+    slope, intercept = np.polyfit(train.loc[m, "ppg"],
+                                  train.loc[m, "weekly_std"], 1)
+    for df in (train, test):
+        expected = intercept + slope * df["ppg"]          # the line, applied
+        df["std_residual"] = df["weekly_std"] - expected  # actual - expected
+    return train, test
+```
+
+**Why it looks like this:**
+- `np.polyfit(x, y, 1)` fits a degree-1 (straight-line) least-squares fit and
+  returns `[slope, intercept]`. Here `x = ppg`, `y = weekly_std`, so the line is
+  "expected volatility given how much you score."
+- **Fit on `train` only, apply the same `slope`/`intercept` to `test`.** The
+  residual line is part of the model; fitting it on the test season would leak
+  future information — the exact sin the backtests exist to prevent. This is the
+  one thing to get right.
+- `weekly_std − expected` is the residual: positive = *more* volatile than a
+  player at that scoring level usually is; negative = steadier than expected.
+  It's PPG-neutral by construction — that's the whole point.
+- NaN `weekly_std` (pre-2022, no weekly data) flows through to a NaN residual,
+  which the model's imputer handles — identical treatment to raw std, so the
+  comparison stays fair.
+
+**Reading the result:** if `+residual` beats `+raw_std`, the deconfounded
+representation carried signal the raw one buried. If they're a wash — likely on
+Ridge, which already has `ppg` and can deconfound linearly by itself — then the
+*representation* was never the problem; there's just little next-season signal in
+consistency. Either outcome is a real, honest answer to the question you raised.
+
 ---
 
-*(Later Phase 4 solutions appended as those scaffolds land.)*
+*(Phase 4c/4d solutions appended as those scaffolds land.)*
