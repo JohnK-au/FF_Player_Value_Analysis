@@ -311,6 +311,36 @@ Ridge, which already has `ppg` and can deconfound linearly by itself — then th
 *representation* was never the problem; there's just little next-season signal in
 consistency. Either outcome is a real, honest answer to the question you raised.
 
+### TODO(you) 4.3 — rank agreement between the two experts
+
+```python
+from scipy.stats import spearmanr
+
+def rank_agreement(df, pred_col="tabfm_pred", value_col=V2_VALUE_COL):
+    rho = spearmanr(df[pred_col], df[value_col]).statistic
+    ranked = df.copy()
+    ranked["rank_gap"] = ranked[pred_col].rank() - ranked[value_col].rank()
+    return rho, ranked
+```
+
+**Why it looks like this:**
+- **Spearman** compares *orderings*, not values — perfect for two lenses on
+  different scales (PPG vs a 0-100 score). It's the same metric you wrote in 2.1,
+  reused here for a different purpose: agreement instead of accuracy.
+- `.rank()` turns each column into 1st, 2nd, 3rd… (ties averaged). Subtracting
+  the two rank columns gives each player's **disagreement** in ordinal terms:
+  `+300` means TabFM ranks them ~300 spots higher than V2 does. Sorting by
+  `rank_gap` puts the two experts' worst fights at the top and bottom.
+- Same `.rank()` direction on both (default ascending) so the subtraction is
+  apples-to-apples. Copy `df` first so you don't bolt a column onto the caller's
+  frame.
+
+**Reading it:** a high Spearman means the experts broadly agree on who's good
+(reassuring — two very different methods converging). The `rank_gap` extremes are
+the interesting cases: each is a blind spot in TabFM, a blind spot in V2, or a
+data quirk. The "vs actual 2025" tiebreaker then hints which lens was *right*
+where they diverged.
+
 ---
 
-*(Phase 4c/4d solutions appended as those scaffolds land.)*
+*(Phase 4d solution appended when that scaffold lands.)*
