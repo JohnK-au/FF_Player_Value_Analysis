@@ -219,6 +219,25 @@
   table.res td.txt, table.res th.txt { text-align:left; color:var(--ink); }
   table.res tr.bar td.txt { color:var(--ink-faint); }
   table.res tr.win td { color:var(--known); font-weight:650; }
+
+  /* ---- verdict + findings (section 09/10) ---- */
+  .verdict { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:26px 0; }
+  .vcard { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:20px 22px; }
+  .vcard.tie { border-color:var(--future); }
+  .vcard .lbl { font-family:var(--mono); font-size:11px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-faint); }
+  .vcard .big { font-family:var(--mono); font-size:30px; font-weight:700; color:var(--ink);
+    font-variant-numeric:tabular-nums; margin:8px 0 4px; line-height:1; }
+  .vcard.tie .big { color:var(--future); }
+  .vcard .sub { font-size:13.5px; color:var(--ink-soft); }
+  .findings { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+    gap:14px; margin:24px 0; }
+  .fcard { background:var(--surface); border:1px solid var(--line);
+    border-left:3px solid var(--known); border-radius:0 10px 10px 0; padding:15px 18px; }
+  .fcard h4 { margin:0 0 7px; font-size:14.5px; color:var(--ink); font-weight:670; }
+  .fcard p { margin:0; font-size:13px; color:var(--ink-soft); line-height:1.5; }
+  .fcard .tag { font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--known); display:block; margin-bottom:6px; }
   table.res td { color:var(--ink-soft); }
   .tag-il { font-family:var(--mono); font-size:11px; color:var(--danger); border:1px solid var(--danger);
     border-radius:5px; padding:2px 8px; }
@@ -254,10 +273,11 @@
 <body>
 <header>
   <div class="wrap">
-    <p class="eyebrow">TabFM Research · Architecture Reference</p>
+    <p class="eyebrow">TabFM Research · Architecture &amp; Findings</p>
     <h1>Predicting next season <span class="fade">from what we knew at the end of this one.</span></h1>
-    <p class="lede">How the standalone TabFM analysis is built — six stages that turn raw
-      weekly box scores into an honest, leak-free forecast, and the harness that scores it.</p>
+    <p class="lede">How the standalone TabFM analysis is built — six stages from raw box
+      scores to an honest, leak-free forecast — and what it found: a 13&nbsp;GB foundation
+      model that ties a plain linear regression.</p>
     <div class="meta">
       <span>Branch <b>tabfm-research</b></span>
       <span>Rows <b>3,726</b> transitions</span>
@@ -610,15 +630,116 @@
 <section>
   <div class="wrap">
     <div class="prose">
-      <p class="snum">09 · WHERE EVERYTHING LIVES</p>
+      <p class="snum">09 · THE VERDICT</p>
+      <h2>Does the foundation model beat the bar?</h2>
+      <p>The bar was Ridge (§8). Here's what a 13&nbsp;GB, in-context foundation
+        model does against it on next-season PPG — the question the whole project
+        was built to answer.</p>
+    </div>
+    <div class="verdict">
+      <div class="vcard">
+        <span class="lbl">vs the easy bar · persistence</span>
+        <div class="big">−0.9 PPG</div>
+        <div class="sub">TabFM clears "next year = this year" comfortably (MAE
+          3.10 vs 4.00 in 2025). It learned real signal.</div>
+      </div>
+      <div class="vcard tie">
+        <span class="lbl">vs the real bar · ridge</span>
+        <div class="big">a tie</div>
+        <div class="sub">MAE 3.10 vs 3.11. The paired-bootstrap 95% CI straddles
+          zero in <em>both</em> backtests — no clear winner. Statistically
+          indistinguishable from linear regression.</div>
+      </div>
+    </div>
+    <div class="prose"><p>Everything else we tried to give TabFM an edge came up
+      empty — measured, not assumed:</p></div>
+    <div class="findings">
+      <div class="fcard">
+        <span class="tag">tier ablation</span>
+        <h4>Extra features add nothing</h4>
+        <p>Dropping the advanced or consistency tier moves MAE by ±0.01–0.06,
+          sign flipping across years. Core stats (prior PPG + box score) carry
+          the signal.</p>
+      </div>
+      <div class="fcard">
+        <span class="tag">stratified</span>
+        <h4>No hidden subgroup</h4>
+        <p>Sliced 12 ways by position × scoring tier, consistency helps in no
+          cell that holds across both backtests. Big deltas live only in tiny,
+          noisy cells.</p>
+      </div>
+      <div class="fcard">
+        <span class="tag">residualized</span>
+        <h4>Not a confounding artifact</h4>
+        <p>Deconfounding consistency from PPG doesn't rescue it. On Ridge it's a
+          dead wash — the linear model already deconfounds itself. No signal, three
+          ways.</p>
+      </div>
+      <div class="fcard">
+        <span class="tag">two experts</span>
+        <h4>Agree 0.81, split on age</h4>
+        <p>TabFM and the V2 engine rank-agree strongly. Where they diverge it's
+          clean: TabFM rates aging vets high (next-year points), V2 rates young
+          WRs high (dynasty horizon).</p>
+      </div>
+    </div>
+    <div class="callout future">
+      <span class="lbl">Honest caveat — the "which is right" tiebreaker</span>
+      V2's <span class="mono">dynasty_value</span> ranks actual-2025 better than
+      TabFM (0.84 vs 0.76) — but V2 was built from data <em>through 2025</em>, so
+      it partly <em>describes</em> the season rather than forecasting it. TabFM's
+      number is clean out-of-sample. Not a fair fight; flagged, not spun.
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <p class="snum">10 · WHAT IT MEANS</p>
+      <h2>Reach for the linear model</h2>
+      <p>For this task — forecasting next-season fantasy PPG — <strong>a plain
+        Ridge regression is the right tool, and TabFM's 13&nbsp;GB earns nothing
+        extra.</strong> The reason is baked into the data: next-season signal is
+        largely <em>linear</em> and lives mostly in a player's prior PPG. A
+        foundation model's edge is flexibility — nonlinear interactions,
+        in-context patterns — and there's little of that here for it to exploit.</p>
+      <p>That's not a knock on TabFM; it's a finding about the <em>problem</em>.
+        Fantasy production a year out is genuinely noisy (best R² ~0.5 — half is
+        unpredictable), and what structure exists is simple. The model did its job;
+        the job just didn't need it.</p>
+      <p>The result worth keeping isn't only the verdict — it's that the
+        <strong>machinery could tell the difference.</strong> Baselines published
+        before the headline model, bootstrap CIs instead of point estimates,
+        ablations that measure rather than assume, and a leak-free backtest
+        throughout. Without that scaffolding, "TabFM beats persistence by 0.9
+        PPG!" reads as a win. With it, the honest story is visible: a tie, and a
+        problem that a linear model already solves.</p>
+    </div>
+    <div class="callout">
+      <span class="lbl">The one-line takeaway</span>
+      A foundation model is only worth its cost when the problem has structure a
+      simpler model can't reach. Always make it prove that against an honest bar —
+      here, it couldn't, and knowing so is the win.
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <p class="snum">11 · WHERE EVERYTHING LIVES</p>
       <h2>The file map</h2>
     </div>
     <div class="files">
       <div class="frow"><span class="fn done">build_dataset.py</span><span class="fd">Stages 1–4. Loaders, the self-join, leakage checks, the data dictionary. <b>Runs in the project venv.</b></span></div>
-      <div class="frow"><span class="fn">evaluate.py</span><span class="fd">The shared harness: <b>metrics</b>, the <b>backtest splitter</b>, <span class="mono">feature_matrix()</span>, the paired bootstrap.</span></div>
-      <div class="frow"><span class="fn">baselines.py</span><span class="fd">The four models + the runner that prints the scoreboard. <b>Runs in the TabFM venv.</b></span></div>
-      <div class="frow"><span class="fn">_weights.py</span><span class="fd">Loads the TabFM network, working around the safetensors format skew.</span></div>
-      <div class="frow"><span class="fn">run_tabfm.py</span><span class="fd">Phase 3 — TabFM through the same harness, plus the ablations.</span></div>
+      <div class="frow"><span class="fn done">evaluate.py</span><span class="fd">The shared harness: <b>metrics</b>, the <b>backtest splitter</b>, <span class="mono">feature_matrix()</span>, the paired bootstrap.</span></div>
+      <div class="frow"><span class="fn done">baselines.py</span><span class="fd">The four yardsticks + the scoreboard runner. <b>Runs in the TabFM venv.</b></span></div>
+      <div class="frow"><span class="fn done">_weights.py</span><span class="fd">Loads the TabFM network, working around the safetensors format skew.</span></div>
+      <div class="frow"><span class="fn done">run_tabfm.py</span><span class="fd">Phase 3 — TabFM through the same harness, plus the tier ablation (cached).</span></div>
+      <div class="frow"><span class="fn done">experiments.py</span><span class="fd">Phase 4a — stratified ablation (consistency/advanced by position × scoring band).</span></div>
+      <div class="frow"><span class="fn done">residual_experiment.py</span><span class="fd">Phase 4b — residualized consistency (deconfound volatility from PPG).</span></div>
+      <div class="frow"><span class="fn done">compare_v2.py</span><span class="fd">Phase 4c — agreement analysis: TabFM forecast vs the V2 engine.</span></div>
       <div class="frow"><span class="fn">tabfm_transitions.parquet</span><span class="fd">The data contract. 3,726 × 36. Git-ignored; rebuilt on demand.</span></div>
     </div>
     <div class="prose">
@@ -630,7 +751,7 @@
 
 <footer>
   <div class="wrap">
-    <p class="mono">tabfm-research · architecture reference · Phase 2 in progress</p>
+    <p class="mono">tabfm-research · architecture &amp; findings · project complete</p>
     <p>Amber = season t (known / model) · Slate = season t+1 (the future / target). Built from real
       pipeline data — Justin Jefferson's transitions, 3,726 rows, 2016–2024.</p>
   </div>
