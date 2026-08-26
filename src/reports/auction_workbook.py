@@ -16,6 +16,7 @@ deliberate follow-up.
 from __future__ import annotations
 
 import datetime as dt
+import difflib
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +29,31 @@ from src.config import CAP_TOTAL, PROCESSED_DIR, TEAMS, UPCOMING_SEASON
 MY_TEAM = "Kerr"
 POS_ORDER = ["QB", "RB", "WR", "TE"]
 VET_SLOTS = 28  # 14 starters + 14 bench veteran contract slots
+
+# --- auction strategy (Kerr) -- edit these as the plan evolves --------------
+# Personal max bids (cap units) in the user's priority order. These OVERRIDE the
+# model's fair value where the user's context is better (e.g. Adams on a 1yr
+# rental -- the model's fair is an age-discounted DYNASTY price).
+TARGET_BIDS = [
+    {"player": "Davante Adams",       "your_max": 120,
+     "note": "ANCHOR. Best producer of the WR targets; 1yr rental so ignore the dynasty age-discount. Push it."},
+    {"player": "Blake Corum",         "your_max": 45,
+     "note": "Most-wanted RB. At model fair -- stay disciplined."},
+    {"player": "Keaton Mitchell",     "your_max": 35,
+     "note": "2nd RB want. Cheap upside flier."},
+    {"player": "Dalton Kincaid",      "your_max": 40,
+     "note": "Only if cheap. Pairs with cutting Andrews (opens TE1). Walk away above 40."},
+    {"player": "Michael Wilson",      "your_max": 20,
+     "note": "Only if <20. Upgrade over the WRs you're cutting (prod 38 > McMillan/Tucker/TeSlaa/Boutte)."},
+    {"player": "Travis Etienne",      "your_max": 75,
+     "note": "Low interest. Only at a discount."},
+]
+
+# Cut candidates on Kerr, in the user's stated priority order.
+CUT_LIST = ["Tre Tucker", "Jalen McMillan", "Mark Andrews", "Isaac TeSlaa", "Kayshon Boutte"]
+
+CAP_RESERVE = 75      # keep for in-season flexibility (user: leave 50-100)
+NEW_CUT_RATE = 0.50   # dead cap on NEW cuts (rules going-forward; 0.20 is legacy)
 PRICING_CSV = PROCESSED_DIR / "player_pricing_2026.csv"
 OUT = PROCESSED_DIR / "reports" / "league_rosters_2026.xlsx"
 
@@ -237,6 +263,117 @@ def build_validation(roster: pd.DataFrame, recon: pd.DataFrame,
     return pd.DataFrame(rows), notes
 
 
+# ------------------------------------------------------------------ auction plan
+def _priced_universe() -> pd.DataFrame:
+    """Full pricing table joined to current (2026) NFL team. Joins on espn_id
+    (via the 2026 ESPN cache) so it covers the FA pool too -- the contract-only
+    crosswalk misses free agents."""
+    price = pd.read_csv(PRICING_CSV)
+    teams = pd.read_csv(PROCESSED_DIR / "espn_teams_2026.csv")
+    price["_id"] = price["espn_id"].astype("float64")
+    teams["_id"] = teams["espn_id"].astype("float64")
+    price = price.merge(teams[["_id", "pro_team"]].drop_duplicates("_id"), on="_id", how="left")
+    return price.drop(columns="_id").rename(columns={"pro_team": "nfl_team"})
+
+
+def _find_player(name: str, pool: list[str]) -> str | None:
+    if name in pool:
+        return name
+    m = difflib.get_close_matches(name, pool, n=1, cutoff=0.55)
+    return m[0] if m else None
+
+
+def build_bid_plan(univ: pd.DataFrame) -> pd.DataFrame:
+    """The user's targets + personal max bids, annotated with the model's read.
+    Blank RESULT / price_paid columns are for live use during the auction."""
+    pool = univ["player"].tolist()
+    rows = []
+    for i, t in enumerate(TARGET_BIDS, 1):
+        m = _find_player(t["player"], pool)
+        r = univ[univ["player"] == m].iloc[0] if m is not None else None
+        fair = round(_f(r["fair_value_2026"]), 1) if r is not None else np.nan
+        rows.append({
+            "pri": i, "player": t["player"],
+            "pos": r["position_group"] if r is not None else None,
+            "nfl_team": r["nfl_team"] if r is not None else None,
+            "age": r["age"] if r is not None else np.nan,
+            "prod_score": round(_f(r["production_value"]), 0) if r is not None else np.nan,
+            "model_fair": fair, "your_max": t["your_max"],
+            "premium_vs_model": round(t["your_max"] - fair, 1) if pd.notna(fair) else np.nan,
+            "note": t["note"], "RESULT": "", "price_paid": "",
+        })
+    return pd.DataFrame(rows)
+
+
+def build_cut_plan(roster: pd.DataFrame) -> pd.DataFrame:
+    """Kerr cut candidates with the cap each frees. New-cut dead cap is 50%/yr,
+    so current-year relief = half the salary; amnesty frees the full salary."""
+    kerr = roster[roster["team"] == MY_TEAM]
+    rows = []
+    for i, name in enumerate(CUT_LIST, 1):
+        hit = kerr[kerr["player"] == name]
+        if hit.empty:
+            rows.append({"pri": i, "player": name, "pos": "NOT on Kerr roster"})
+            continue
+        r = hit.iloc[0]
+        sal = _f(r["salary_2026"])
+        rows.append({
+            "pri": i, "player": name, "pos": r["position_group"],
+            "nfl_team": r.get("nfl_team"), "salary_2026": round(sal, 1),
+            "years": int(_f(r["years_2026"])),
+            "model_fair": round(_f(r["fair_value_2026"]), 1),
+            "surplus_2026": round(_f(r["surplus_2026"]), 1),
+            "cap_freed_cut50": round(sal * (1 - NEW_CUT_RATE), 1),
+            "cap_freed_amnesty": round(sal, 1),
+        })
+    return pd.DataFrame(rows)
+
+
+def build_budget(caps: pd.DataFrame, cut_plan: pd.DataFrame,
+                 bid_plan: pd.DataFrame) -> pd.DataFrame:
+    """Kerr's spendable auction budget under the user's spend/reserve philosophy."""
+    cap_space = _f(caps.loc[MY_TEAM, "cap_space"]) if MY_TEAM in caps.index else 0.0
+    cuts50 = _f(cut_plan["cap_freed_cut50"].sum()) if "cap_freed_cut50" in cut_plan else 0.0
+    if "salary_2026" in cut_plan and len(cut_plan):
+        big = _f(cut_plan["salary_2026"].max())
+        amnesty_extra = big * NEW_CUT_RATE  # full salary - the 50% relief already counted
+    else:
+        amnesty_extra = 0.0
+    planned = _f(bid_plan["your_max"].sum())
+    spend_norm = cap_space + cuts50 - CAP_RESERVE
+    rows = [
+        ("Cap space now (Kerr)", round(cap_space, 1)),
+        ("+ Cuts freed (all, normal 50%)", round(cuts50, 1)),
+        ("+ Amnesty upgrade on biggest cut (extra)", round(amnesty_extra, 1)),
+        ("- In-season reserve", float(-CAP_RESERVE)),
+        ("Spendable (normal cuts)", round(spend_norm, 1)),
+        ("Spendable (if amnesty biggest)", round(spend_norm + amnesty_extra, 1)),
+        ("Planned max bids (all targets)", round(planned, 1)),
+        ("Slack if you win ALL at max", round(spend_norm - planned, 1)),
+    ]
+    return pd.DataFrame(rows, columns=["item", "cap_units"])
+
+
+def build_fa_pool(univ: pd.DataFrame, top_n: int = 15) -> pd.DataFrame:
+    """Available FAs (unrostered + untagged) ranked by model fair within
+    position -- the pivot list if a target gets bid past your max. Targets marked ★."""
+    from src.data.cap import parse_tags
+    tagged = set(parse_tags()["player"])
+    target_names = {_find_player(t["player"], univ["player"].tolist()) for t in TARGET_BIDS}
+    fa = univ[(univ["roster_status"] == "fa") & (~univ["player"].isin(tagged))].copy()
+    fa = fa[fa["position_group"].isin(POS_ORDER)]
+    fa["tgt"] = np.where(fa["player"].isin(target_names), "★", "")
+    fa = fa.sort_values(["position_group", "fair_value_2026"], ascending=[True, False])
+    # top-N per position, but ALWAYS keep the user's targets even if lower-ranked
+    top = fa.groupby("position_group", group_keys=False).head(top_n)
+    fa = pd.concat([top, fa[fa["tgt"] == "★"]]).drop_duplicates("player")
+    fa = fa.sort_values(["position_group", "fair_value_2026"], ascending=[True, False])
+    out = fa[["position_group", "tgt", "player", "nfl_team", "age",
+              "production_value", "dynasty_value", "fair_value_2026"]]
+    return out.rename(columns={"position_group": "pos", "production_value": "prod_score",
+                               "dynasty_value": "DV", "fair_value_2026": "model_fair"}).round(1)
+
+
 # ------------------------------------------------------------------ styling
 def _style_sheet(ws, highlight_team_col: bool = False):
     # header row
@@ -286,9 +423,24 @@ def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     summary = build_summary(roster, caps)
     validation, _ = build_validation(roster, recon, notes)
+    univ = _priced_universe()
+    bid_plan = build_bid_plan(univ)
+    cut_plan = build_cut_plan(roster)
+    budget = build_budget(caps, cut_plan, bid_plan)
+    fa_pool = build_fa_pool(univ)
 
     with pd.ExcelWriter(OUT, engine="openpyxl") as xw:
         summary.to_excel(xw, sheet_name="Summary", index=False)
+        # auction-actionable tabs, up front
+        bid_plan.to_excel(xw, sheet_name="Targets", index=False)
+        cut_plan.to_excel(xw, sheet_name="Cut_Plan", index=False)
+        ws = xw.sheets["Cut_Plan"]                      # budget block below the cut table
+        bstart = len(cut_plan) + 3
+        ws.cell(row=bstart, column=1, value="BUDGET (Kerr)").font = Font(bold=True)
+        for j, (item, val) in enumerate(budget.itertuples(index=False), 1):
+            ws.cell(row=bstart + j, column=1, value=item)
+            ws.cell(row=bstart + j, column=2, value=val)
+        fa_pool.to_excel(xw, sheet_name="FA_Pool", index=False)
         for team in TEAMS:
             build_team(roster, team).to_excel(xw, sheet_name=team, index=False)
         validation.to_excel(xw, sheet_name="Validation", index=False)
@@ -316,9 +468,15 @@ def main() -> None:
     wb.save(OUT)
 
     print(f"wrote {OUT.relative_to(PROCESSED_DIR.parent.parent)}")
-    print(f"  Summary + {len(TEAMS)} team tabs + Validation")
-    print("\n=== Summary preview ===")
-    print(summary.to_string(index=False))
+    print(f"  Summary + Targets + Cut_Plan + FA_Pool + {len(TEAMS)} team tabs + Validation")
+    print("\n=== Targets (bid plan) ===")
+    print(bid_plan[["pri", "player", "pos", "model_fair", "your_max",
+                    "premium_vs_model"]].to_string(index=False))
+    print("\n=== Cut plan ===")
+    print(cut_plan[["pri", "player", "pos", "salary_2026", "surplus_2026",
+                    "cap_freed_cut50"]].to_string(index=False))
+    print("\n=== Budget (Kerr) ===")
+    print(budget.to_string(index=False))
 
 
 if __name__ == "__main__":
