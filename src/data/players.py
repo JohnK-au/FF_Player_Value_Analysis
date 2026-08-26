@@ -74,6 +74,12 @@ def espn_player_table(year: int = 2025, fa_size: int = 1500) -> pd.DataFrame:
     return df
 
 
+# Sheet names whose only fuzzy candidate is a DIFFERENT player -- block the
+# spurious match so they stay unmatched (deep rookies with no ESPN entry yet).
+# Verified 2026-08: "Chris Bell"->Chris Boswell(K), "Omar Cooper Jr"->Amari Cooper.
+_BLOCK_FUZZY = {"Chris Bell", "Omar Cooper Jr"}
+
+
 def _match_one(name: str, espn_df: pd.DataFrame, norm_index: list[str]):
     target = ALIASES.get(str(name).strip(), name)
     n = _normalize(target)
@@ -82,6 +88,8 @@ def _match_one(name: str, espn_df: pd.DataFrame, norm_index: list[str]):
     exact = espn_df[espn_df["norm"] == n]
     if len(exact):
         return exact.iloc[0], 1.0, "exact"
+    if str(name).strip() in _BLOCK_FUZZY:
+        return None, 0.0, "none"
     close = difflib.get_close_matches(n, norm_index, n=1, cutoff=0.84)
     if close:
         hit = espn_df[espn_df["norm"] == close[0]].iloc[0]
@@ -164,7 +172,13 @@ def attributes_table(rebuild: bool = False) -> pd.DataFrame:
     cw["espn_id"] = pd.to_numeric(cw["espn_id"], errors="coerce").astype("Int64")
     cw["position_group"] = cw["position"].map(POSITION_GROUP).fillna("Other")
     ages = nfl_attrs()[["espn_id", "age", "years_exp"]]
-    return cw.merge(ages, on="espn_id", how="left")
+    # espn_id is nullable Int64; pandas<2 merge can't factorize NA keys (rookies
+    # that didn't crosswalk + head-coach slots). Join only the id'd rows and
+    # re-attach the rest with NaN age -- they still flow downstream via the
+    # name-based join in cap.player_salaries_2026.
+    have_id = cw[cw["espn_id"].notna()].merge(ages, on="espn_id", how="left")
+    no_id = cw[cw["espn_id"].isna()].copy()
+    return pd.concat([have_id, no_id], ignore_index=True)
 
 
 def save_crosswalk(df: pd.DataFrame | None = None) -> "pd.Path":

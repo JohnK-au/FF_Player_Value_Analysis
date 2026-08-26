@@ -16,11 +16,17 @@ FIG_CAP = FIGURES_DIR / "cap"              # cap distribution / projection / by-
 FIG_VALUE = FIGURES_DIR / "value"          # value scatters (static + interactive)
 
 # --- League constants ----------------------------------------------------------
-TEAMS = ["Nate", "Seeb", "Silv", "Kerr", "Will", "Drew", "Couc", "Haft"]
+# "Couc" franchise changed ownership -> renamed "Paik" (2026-08 offseason).
+TEAMS = ["Nate", "Seeb", "Silv", "Kerr", "Will", "Drew", "Paik", "Haft"]
 
 # The contract sheet's active "yrs remain" is measured as of CURRENT_SEASON;
 # UPCOMING_SEASON is the season the analysis centers on.
-CURRENT_SEASON = 2025
+# 2026-08: the master sheet rolled forward to a 2026 base (yrs-remain now as of
+# 2026, cap summary 2026-2030), so CURRENT_SEASON advanced 2025 -> 2026. It now
+# coincides with UPCOMING_SEASON (the auction season). NOTE: the separate
+# CURRENT_SEASON constants in team.py / production.py stay 2025 -- those track
+# the last *completed* NFL season for stats, which is still 2025.
+CURRENT_SEASON = 2026
 UPCOMING_SEASON = 2026
 
 # Salary cap per team per season (confirmed: CAP USED + CAP SPACE = 1500).

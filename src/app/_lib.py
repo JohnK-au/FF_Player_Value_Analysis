@@ -22,7 +22,7 @@ import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
 POS_ORDER = ["QB", "RB", "WR", "TE"]
-TEAMS = ["Nate", "Seeb", "Silv", "Kerr", "Will", "Drew", "Couc", "Haft"]
+TEAMS = ["Nate", "Seeb", "Silv", "Kerr", "Will", "Drew", "Paik", "Haft"]  # Couc -> Paik (ownership change)
 MY_TEAM = "Kerr"
 ROSTER_STATUSES = ["active", "extension", "rookie", "practice_squad", "fa"]
 
