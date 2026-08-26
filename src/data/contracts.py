@@ -239,6 +239,12 @@ def parse_extensions(df: pd.DataFrame | None = None) -> pd.DataFrame:
             records.append(rec)
 
     out = pd.DataFrame.from_records(records)
+    if out.empty:
+        # No extensions this cycle -- e.g. the tab is reset before the FA auction
+        # (extensions are signed AFTER it). Return an empty frame WITH the schema
+        # so build_2026_contracts / cap.reconcile operate on well-formed empty
+        # data instead of KeyError-ing on a bare (0, 0) frame.
+        out = pd.DataFrame(columns=["team", "player", *_EXT_NUMERIC_COLS])
     for col in _EXT_NUMERIC_COLS:
         if col in out:
             out[col] = pd.to_numeric(out[col], errors="coerce")
@@ -279,8 +285,12 @@ def build_2026_contracts(
     a["years_remaining"] = pd.to_numeric(a["years_remaining"], errors="coerce")
     for _, r in a[a["years_remaining"].isna()].iterrows():
         notes.append(f"Dropped {r['team']} {r['player']}: unreadable years_remaining")
-    a = a[a["years_remaining"] >= 2].copy()
-    a["years_2026"] = (a["years_remaining"] - 1).astype(int)
+    # Sheet rolled forward to a 2026 base (2026-08): active "yrs remain" is now
+    # measured as of 2026 itself, so a deal is active in 2026 iff >= 1 year
+    # remains, and years_2026 IS years_remaining (no -1 roll). (Pre-roll the
+    # sheet was 2025-based and this subtracted one.)
+    a = a[a["years_remaining"] >= 1].copy()
+    a["years_2026"] = a["years_remaining"].astype(int)
     a["salary_2026"] = pd.to_numeric(a["salary"], errors="coerce")
 
     ext_players = set(extensions["player"])
