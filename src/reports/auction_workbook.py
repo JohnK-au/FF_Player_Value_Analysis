@@ -87,6 +87,33 @@ _VALUE_COLS = ["years_2026", "dynasty_total_salary",
                "surplus_dynasty"]
 
 
+def _tagged_rows(existing: set, cw: pd.DataFrame) -> pd.DataFrame:
+    """Franchise-tagged players as roster rows: 1yr @ tag salary, status
+    'tagged', value columns joined from pricing, current team/position from the
+    2026 crosswalk. The sheet keeps tags in a separate TAG section, so
+    player_salaries_2026 omits them. `existing` guards against double-counting a
+    tag already in the active section; `cw` = 2026 crosswalk (player/_cur_pos/nfl_team)."""
+    from src.data.cap import parse_tags
+    from src.data.players import POSITION_GROUP
+
+    tags = parse_tags()
+    tags = tags[~tags["player"].isin(existing)].copy()
+    if tags.empty:
+        return tags
+    price = pd.read_csv(PRICING_CSV)
+    vcols = [c for c in _VALUE_COLS if c in price.columns]
+    price = price[["player", "espn_id", "age", "position_group", *vcols]].drop_duplicates("player")
+    t = tags.rename(columns={"salary": "salary_2026"}).merge(price, on="player", how="left")
+    t["years_2026"] = 1
+    t["roster_status"] = "tagged"
+    t["dynasty_total_salary"] = t["salary_2026"]  # a tag is a one-year deal
+    t = t.merge(cw, on="player", how="left")
+    grp = t["_cur_pos"].map(POSITION_GROUP)
+    need = t["position_group"].isna() | t["position_group"].eq("Other")
+    t.loc[need, "position_group"] = grp[need]
+    return t.drop(columns=[c for c in ["_cur_pos", "league_year", "tag_year"] if c in t.columns])
+
+
 def load_roster() -> pd.DataFrame:
     """Every rostered player from the sheet (ground truth for ownership) with
     value columns joined on espn_id. Rookies/unmatched players appear with their
@@ -130,6 +157,13 @@ def load_roster() -> pd.DataFrame:
         m = roster["player"].isin(ov.index)
         roster.loc[m, "position_group"] = roster.loc[m, "player"].map(ov)
 
+    # Fold in franchise-tagged players -- a real 1yr roster slot the sheet keeps
+    # in its own TAG section, so player_salaries_2026 omits them: without this
+    # they vanish from their team's roster AND wrongly show as FA-pool available.
+    tagged = _tagged_rows(set(roster["player"]), cw)
+    if len(tagged):
+        roster = pd.concat([roster, tagged], ignore_index=True)
+
     roster["type"] = roster.apply(_roster_type, axis=1)
     roster["recommendation"] = roster.apply(_recommend, axis=1)
     return roster
@@ -153,7 +187,7 @@ def build_summary(roster: pd.DataFrame, caps: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for team in TEAMS:
         r = roster[roster["team"] == team]
-        vet = int(r["roster_status"].isin(["active", "extension"]).sum())
+        vet = int(r["roster_status"].isin(["active", "extension", "tagged"]).sum())
         cap = caps.loc[team] if team in caps.index else None
         rows.append({
             "team": team,

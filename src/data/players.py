@@ -99,14 +99,16 @@ def _match_one(name: str, espn_df: pd.DataFrame, norm_index: list[str]):
 
 
 def current_players() -> pd.DataFrame:
-    """Distinct players currently under contract (active + extension + rookie + IR/PS)."""
-    from .cap import parse_ir, parse_rookies
+    """Distinct players currently under contract (active + extension + rookie +
+    IR/PS + franchise-tagged)."""
+    from .cap import parse_ir, parse_rookies, parse_tags
 
     frames = [
         parse_active_contracts()[["team", "player"]].assign(role="active"),
         parse_extensions()[["team", "player"]].assign(role="extension"),
         parse_rookies()[["team", "player"]].assign(role="rookie"),
         parse_ir().rename(columns={"designation": "role"})[["team", "player", "role"]],
+        parse_tags()[["team", "player"]].assign(role="tag"),
     ]
     allp = pd.concat(frames, ignore_index=True)
     allp = allp[allp["player"].notna() & (allp["player"].astype(str).str.strip() != "")]
